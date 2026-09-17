@@ -122,8 +122,8 @@ export default function ManualDrawer() {
   const sugeridas = moduloActual ? articulosFiltrados.filter((a) => a.modulo === moduloActual) : [];
   const resto = moduloActual ? articulosFiltrados.filter((a) => a.modulo !== moduloActual) : articulosFiltrados;
 
-  // Portal público de autoservicio: sin manual administrativo
-  if (pathname?.startsWith("/pago/")) return null;
+  // Portal público de autoservicio / portal móvil del supervisor: sin manual administrativo
+  if (pathname?.startsWith("/pago/") || pathname?.startsWith("/supervisor")) return null;
 
   const toggleArticulo = (id) => setExpandidoId((prev) => (prev === id ? null : id));
 

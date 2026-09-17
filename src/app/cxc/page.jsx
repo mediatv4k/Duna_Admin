@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Search, Check, X,
-  Receipt, Trash2, MessageCircle, ArrowRight,
+  Receipt, Trash2, MessageCircle, ArrowRight, ShieldCheck,
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import bancosVenezuela from "@/data/bancosVenezuela";
@@ -297,6 +297,14 @@ export default function CXCPage() {
                       <td className="p-4">
                         <strong className="text-slate-900 block font-black">{c.id}</strong>
                         <span className="text-[11px] text-slate-400">{c.fecha}</span>
+                        {c.autorizadoPor && (
+                          <span
+                            title={`Autorizado por ${c.autorizadoPor.supervisorNombre} · ${c.autorizadoPor.horaAutorizacion}`}
+                            className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 text-[9px] font-black border border-sky-200"
+                          >
+                            <ShieldCheck className="w-2.5 h-2.5" /> Autorizado
+                          </span>
+                        )}
                       </td>
                       <td className="p-4">
                         <span className="font-bold text-slate-800 block">{c.cliente}</span>

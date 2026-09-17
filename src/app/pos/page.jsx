@@ -4,8 +4,9 @@ import Link from "next/link";
 import {
   ArrowLeft, Search, Plus, Check, X,
   Trash2, MessageCircle, ShieldCheck, Wallet, Copy, Settings, Smartphone,
-  AlertTriangle, PauseCircle, History, CreditCard,
+  AlertTriangle, PauseCircle, History, CreditCard, Lock, Loader2, QrCode,
 } from "lucide-react";
+import QRCode from "qrcode";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser } from "@/context/UserContext";
 import bancosVenezuela from "@/data/bancosVenezuela";
@@ -80,6 +81,17 @@ function generarTokenPago() {
   return `tk-${sufijo}`;
 }
 
+// Token efímero para la autorización de crédito por QR (/supervisor?token=...)
+function generarTokenAuth() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let sufijo = "";
+  for (let i = 0; i < 8; i++) sufijo += chars[Math.floor(Math.random() * chars.length)];
+  return `auth-${sufijo}`;
+}
+
+const SEGUNDOS_EXPIRACION_QR = 60;
+const PIN_EMERGENCIA_DEFECTO = "9999";
+
 function limpiarTelefono(str) {
   return String(str || "").replace(/\D/g, "").replace(/^0+/, "");
 }
@@ -147,6 +159,15 @@ export default function POSPage() {
   const [ventasEnEspera, setVentasEnEspera] = useState([]);
   const [modalEsperaAbierto, setModalEsperaAbierto] = useState(false);
   const [avisoClienteEnEspera, setAvisoClienteEnEspera] = useState(null);
+
+  // --- Autorización de Crédito por Supervisor (QR dinámico) ---
+  const [modalAutorizacionAbierto, setModalAutorizacionAbierto] = useState(false);
+  const [autorizacionActual, setAutorizacionActual] = useState(null);
+  const [autorizacionCredito, setAutorizacionCredito] = useState(null);
+  const [segundosRestantes, setSegundosRestantes] = useState(SEGUNDOS_EXPIRACION_QR);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [pinEmergenciaAbierto, setPinEmergenciaAbierto] = useState(false);
+  const [pinEmergenciaInput, setPinEmergenciaInput] = useState("");
 
   // Cargar datos locales
   useEffect(() => {
@@ -542,6 +563,10 @@ export default function POSPage() {
 
   const requiereDatosTransferenciaVenta = METODOS_CON_REFERENCIA.includes(formVenta.metodoPago);
 
+  // Candado de crédito: solo se exige autorización si la venta a crédito deja saldo pendiente real
+  const saldoProyectadoCobro = Math.max(0, totalFacturaUsd - (formVenta.condicionVenta === "CONTADO" ? totalFacturaUsd : montoAbonadoUsd));
+  const requiereAutorizacionSupervisor = formVenta.condicionVenta === "CREDITO" && saldoProyectadoCobro > 0;
+
   // Referencias ya usadas en cualquier abono registrado, para evitar duplicidad
   const referenciasUsadas = new Set(
     cuentas.flatMap(c => (c.historialAbonos || []).map(h => h.referencia).filter(Boolean))
@@ -617,7 +642,223 @@ export default function POSPage() {
     return () => clearInterval(intervalo);
   }, [tokenPagoActivo]);
 
-  // Guardar Venta y registrar cuenta por cobrar
+  // Genera el QR (data URL) apuntando al portal móvil del supervisor cada vez que hay un token nuevo pendiente
+  useEffect(() => {
+    if (!autorizacionActual || autorizacionActual.status !== "PENDIENTE") return undefined;
+    let cancelado = false;
+    const urlSupervisor = `${window.location.origin}/supervisor?token=${autorizacionActual.tokenAuth}`;
+    QRCode.toDataURL(urlSupervisor, { width: 220, margin: 1, color: { dark: "#0a0e17", light: "#ffffff" } })
+      .then((dataUrl) => {
+        if (!cancelado) setQrDataUrl(dataUrl);
+      })
+      .catch((err) => console.error(err));
+    return () => { cancelado = true; };
+  }, [autorizacionActual]);
+
+  // Contador regresivo de 60 a 0; al llegar a cero marca el token como EXPIRADA en el registro compartido
+  useEffect(() => {
+    if (!modalAutorizacionAbierto || autorizacionActual?.status !== "PENDIENTE") return undefined;
+    const intervalo = setInterval(() => {
+      const restante = Math.max(0, Math.round((autorizacionActual.expiraEn - Date.now()) / 1000));
+      setSegundosRestantes(restante);
+      if (restante === 0) {
+        const actuales = JSON.parse(localStorage.getItem("duna_autorizaciones_credito") || "[]");
+        const actualizadas = actuales.map(a => a.tokenAuth === autorizacionActual.tokenAuth ? { ...a, status: "EXPIRADA" } : a);
+        localStorage.setItem("duna_autorizaciones_credito", JSON.stringify(actualizadas));
+        setAutorizacionActual(prev => (prev ? { ...prev, status: "EXPIRADA" } : prev));
+      }
+    }, 1000);
+    return () => clearInterval(intervalo);
+  }, [modalAutorizacionAbierto, autorizacionActual]);
+
+  // Listener reactivo: revisa cada 1.5s si el supervisor ya aprobó/rechazó desde su teléfono
+  useEffect(() => {
+    if (!modalAutorizacionAbierto || autorizacionActual?.status !== "PENDIENTE") return undefined;
+    const intervalo = setInterval(() => {
+      try {
+        const guardadas = JSON.parse(localStorage.getItem("duna_autorizaciones_credito") || "[]");
+        const match = guardadas.find(a => a.tokenAuth === autorizacionActual.tokenAuth);
+        if (match && match.status !== "PENDIENTE") {
+          setAutorizacionActual(match);
+          if (match.status === "APROBADA") setAutorizacionCredito(match.supervisorInfo);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }, 1500);
+    return () => clearInterval(intervalo);
+  }, [modalAutorizacionAbierto, autorizacionActual]);
+
+  const abrirModalAutorizacion = () => {
+    const registro = {
+      id: `auth_${Date.now()}`,
+      tokenAuth: generarTokenAuth(),
+      cajaId: usuario?.id || "caja_01",
+      clienteDocumento: normalizarDocumento(`${formVenta.tipoDocumento}${formVenta.numeroDocumento}`) || "S/D",
+      clienteNombre: formVenta.cliente || "Consumidor Final",
+      montoUsd: totalFacturaUsd,
+      montoBs: totalFacturaUsd * tasaBcv,
+      expiraEn: Date.now() + SEGUNDOS_EXPIRACION_QR * 1000,
+      status: "PENDIENTE",
+      supervisorInfo: null,
+    };
+    const actuales = JSON.parse(localStorage.getItem("duna_autorizaciones_credito") || "[]");
+    localStorage.setItem("duna_autorizaciones_credito", JSON.stringify([registro, ...actuales]));
+    setQrDataUrl("");
+    setAutorizacionActual(registro);
+    setSegundosRestantes(SEGUNDOS_EXPIRACION_QR);
+    setPinEmergenciaAbierto(false);
+    setPinEmergenciaInput("");
+    setModalAutorizacionAbierto(true);
+  };
+
+  const handlePausarPorAutorizacion = () => {
+    setModalAutorizacionAbierto(false);
+    setAutorizacionActual(null);
+    handlePonerEnEspera();
+  };
+
+  // Guarda la venta y registra la cuenta por cobrar; recibe los datos del supervisor cuando aplica
+  const registrarVenta = (autorizadoPor) => {
+    const esContado = formVenta.condicionVenta === "CONTADO";
+    const abonado = esContado ? totalFacturaUsd : montoAbonadoUsd;
+
+    const documentoFinal = normalizarDocumento(`${formVenta.tipoDocumento}${formVenta.numeroDocumento}`);
+    const saldoPendiente = Math.max(0, totalFacturaUsd - abonado);
+    const estado = saldoPendiente === 0 ? "PAGADO" : abonado > 0 ? "PARCIAL" : "PENDIENTE";
+
+    const historialAbonos = abonado > 0 ? [{
+      fecha: new Date().toLocaleString("es-VE"),
+      moneda: esContado ? "usd" : formVenta.monedaAbono,
+      montoOriginal: esContado ? totalFacturaUsd : (Number(formVenta.montoAbonadoInput) || 0),
+      tasaBcv,
+      montoUsd: abonado,
+      metodoPago: formVenta.metodoPago,
+      bancoEmisor: requiereDatosTransferenciaVenta ? formVenta.bancoEmisor : "",
+      bancoReceptor: requiereDatosTransferenciaVenta ? formVenta.bancoReceptor : "",
+      referencia: requiereDatosTransferenciaVenta ? formVenta.referencia.trim() : "",
+      titular: requiereDatosTransferenciaVenta ? formVenta.titular : "",
+    }] : [];
+
+    const nuevaCuenta = {
+      id: `FAC-${Date.now().toString().slice(-6)}`,
+      fecha: new Date().toLocaleDateString("es-VE"),
+      cliente: formVenta.cliente,
+      documento: documentoFinal || "S/D",
+      paisCodigo: formVenta.paisCodigo,
+      telefono: formVenta.telefono || "",
+      renglones: renglonesVenta,
+      cantidad: renglonesVenta.reduce((acc, r) => acc + r.cantidad, 0),
+      total: totalFacturaUsd,
+      abonado,
+      saldo: saldoPendiente,
+      estado,
+      historialAbonos,
+      autorizadoPor: autorizadoPor || null,
+    };
+
+    // Descontar inventario de CADA renglón del ticket (con soporte de variantes/sabores)
+    let productosActualizados = [...productosInventario];
+    renglonesVenta.forEach(r => {
+      productosActualizados = productosActualizados.map(p => {
+        if (p.id !== r.productoId) return p;
+        if (r.variante && (p.variantes || []).length > 0) {
+          const nuevasVariantes = (p.variantes || []).map(v =>
+            v.nombre === r.variante
+              ? { ...v, stock: Math.max(0, (Number(v.stock) || 0) - r.cantidad) }
+              : v
+          );
+          const nuevoStock = nuevasVariantes.reduce((acc, v) => acc + (Number(v.stock) || 0), 0);
+          return { ...p, variantes: nuevasVariantes, stock: nuevoStock };
+        }
+        return { ...p, stock: Math.max(0, p.stock - r.cantidad) };
+      });
+    });
+    actualizarProductosInventario(productosActualizados);
+
+    // Escudo anti-duplicados: upsert por cédula/RIF normalizada (clave única)
+    const clienteExistente = documentoFinal
+      ? clientes.find(c => normalizarDocumento(c.documento) === documentoFinal)
+      : clientes.find(c => !c.documento && c.nombre.toLowerCase() === formVenta.cliente.toLowerCase());
+    const clienteActualizado = {
+      id: clienteExistente?.id || `cli_${Date.now()}`,
+      documento: documentoFinal,
+      nombre: formVenta.cliente,
+      codigoPais: formVenta.paisCodigo,
+      telefono: formVenta.telefono || "",
+      direccion: formVenta.direccion || "",
+      sucursalId: usuario?.sucursalId || "",
+      condicionVenta: formVenta.condicionVenta,
+      limiteCredito: clienteExistente?.limiteCredito || 0,
+    };
+    if (clienteExistente) {
+      actualizarClientes(clientes.map(c => c === clienteExistente ? clienteActualizado : c));
+    } else {
+      actualizarClientes([clienteActualizado, ...clientes]);
+    }
+
+    // Adjuntar la venta al turno de caja activo
+    if (turnoActivo) {
+      actualizarTurnos(turnos.map(t =>
+        t.id === turnoActivo.id ? { ...t, ventasIds: [...t.ventasIds, nuevaCuenta.id] } : t
+      ));
+    }
+
+    actualizarCuentas([nuevaCuenta, ...cuentas]);
+    setModalCobroAbierto(false);
+    setModalAutorizacionAbierto(false);
+    setAutorizacionActual(null);
+    setAutorizacionCredito(null);
+    setQrDataUrl("");
+    setFormVenta({ ...FORM_VENTA_INICIAL, bancoReceptor: configPagoMovil.bancoReceptor || "" });
+    setRenglonesVenta([]);
+    setItemActual(ITEM_ACTUAL_INICIAL);
+    setBusquedaProducto("");
+    setDocumentoBloqueado(false);
+    setErrorDocumento(false);
+    setModalAuditoriaAbierto(false);
+    setTokenPagoActivo(null);
+    setAvisoClienteEnEspera(null);
+    // Venta formalizada: el borrador de recuperación ya no aplica
+    localStorage.removeItem("duna_pos_draft");
+    setDraftDetectado(null);
+    inputProductoRef.current?.focus();
+  };
+
+  // Tras el check verde de aprobación: continúa la facturación automáticamente
+  useEffect(() => {
+    if (autorizacionActual?.status !== "APROBADA") return undefined;
+    const timeout = setTimeout(() => {
+      registrarVenta(autorizacionActual.supervisorInfo);
+    }, 1400);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registrarVenta se recrea cada render; solo debe reprogramarse cuando cambia el estado de la autorización
+  }, [autorizacionActual]);
+
+  const handleValidarPinEmergencia = () => {
+    const configGuardada = JSON.parse(localStorage.getItem("duna_config_supervisores") || "null");
+    const pinValido = configGuardada?.pinMaestro || PIN_EMERGENCIA_DEFECTO;
+    if (pinEmergenciaInput.trim() !== pinValido) {
+      alert("PIN incorrecto.");
+      return;
+    }
+    const supervisorInfo = {
+      supervisorNombre: "PIN de Emergencia",
+      supervisorId: "PIN-EMERGENCIA",
+      horaAutorizacion: new Date().toLocaleString("es-VE"),
+    };
+    if (autorizacionActual) {
+      const actuales = JSON.parse(localStorage.getItem("duna_autorizaciones_credito") || "[]");
+      const actualizadas = actuales.map(a => a.tokenAuth === autorizacionActual.tokenAuth ? { ...a, status: "APROBADA", supervisorInfo } : a);
+      localStorage.setItem("duna_autorizaciones_credito", JSON.stringify(actualizadas));
+    }
+    setAutorizacionCredito(supervisorInfo);
+    setPinEmergenciaAbierto(false);
+    setPinEmergenciaInput("");
+    registrarVenta(supervisorInfo);
+  };
+
+  // Valida el formulario y decide si hace falta autorización de supervisor antes de registrar
   const handleCrearVenta = (e) => {
     e.preventDefault();
     if (!formVenta.cliente || renglonesVenta.length === 0) {
@@ -647,108 +888,23 @@ export default function POSPage() {
       }
     }
 
-    const documentoFinal = normalizarDocumento(`${formVenta.tipoDocumento}${formVenta.numeroDocumento}`);
-    const saldoPendiente = Math.max(0, totalFacturaUsd - abonado);
-    const estado = saldoPendiente === 0 ? "PAGADO" : abonado > 0 ? "PARCIAL" : "PENDIENTE";
-
-    const historialAbonos = abonado > 0 ? [{
-      fecha: new Date().toLocaleString("es-VE"),
-      moneda: esContado ? "usd" : formVenta.monedaAbono,
-      montoOriginal: esContado ? totalFacturaUsd : (Number(formVenta.montoAbonadoInput) || 0),
-      tasaBcv,
-      montoUsd: abonado,
-      metodoPago: formVenta.metodoPago,
-      bancoEmisor: requiereDatosTransferenciaVenta ? formVenta.bancoEmisor : "",
-      bancoReceptor: requiereDatosTransferenciaVenta ? formVenta.bancoReceptor : "",
-      referencia: requiereDatosTransferenciaVenta ? formVenta.referencia.trim() : "",
-      titular: requiereDatosTransferenciaVenta ? formVenta.titular : "",
-    }] : [];
-
-    const nuevaCuenta = {
-      // eslint-disable-next-line react-hooks/purity -- id generado en un manejador de evento (submit), no durante el render
-      id: `FAC-${Date.now().toString().slice(-6)}`,
-      fecha: new Date().toLocaleDateString("es-VE"),
-      cliente: formVenta.cliente,
-      documento: documentoFinal || "S/D",
-      paisCodigo: formVenta.paisCodigo,
-      telefono: formVenta.telefono || "",
-      renglones: renglonesVenta,
-      cantidad: renglonesVenta.reduce((acc, r) => acc + r.cantidad, 0),
-      total: totalFacturaUsd,
-      abonado,
-      saldo: saldoPendiente,
-      estado,
-      historialAbonos,
-    };
-
-    // Descontar inventario de CADA renglón del ticket (con soporte de variantes/sabores)
-    let productosActualizados = [...productosInventario];
-    renglonesVenta.forEach(r => {
-      productosActualizados = productosActualizados.map(p => {
-        if (p.id !== r.productoId) return p;
-        if (r.variante && (p.variantes || []).length > 0) {
-          const nuevasVariantes = (p.variantes || []).map(v =>
-            v.nombre === r.variante
-              ? { ...v, stock: Math.max(0, (Number(v.stock) || 0) - r.cantidad) }
-              : v
-          );
-          const nuevoStock = nuevasVariantes.reduce((acc, v) => acc + (Number(v.stock) || 0), 0);
-          return { ...p, variantes: nuevasVariantes, stock: nuevoStock };
-        }
-        return { ...p, stock: Math.max(0, p.stock - r.cantidad) };
-      });
-    });
-    actualizarProductosInventario(productosActualizados);
-
-    // Escudo anti-duplicados: upsert por cédula/RIF normalizada (clave única)
-    const clienteExistente = documentoFinal
-      ? clientes.find(c => normalizarDocumento(c.documento) === documentoFinal)
-      : clientes.find(c => !c.documento && c.nombre.toLowerCase() === formVenta.cliente.toLowerCase());
-    const clienteActualizado = {
-      // eslint-disable-next-line react-hooks/purity -- id generado en un manejador de evento (submit), no durante el render
-      id: clienteExistente?.id || `cli_${Date.now()}`,
-      documento: documentoFinal,
-      nombre: formVenta.cliente,
-      codigoPais: formVenta.paisCodigo,
-      telefono: formVenta.telefono || "",
-      direccion: formVenta.direccion || "",
-      sucursalId: usuario?.sucursalId || "",
-      condicionVenta: formVenta.condicionVenta,
-      limiteCredito: clienteExistente?.limiteCredito || 0,
-    };
-    if (clienteExistente) {
-      actualizarClientes(clientes.map(c => c === clienteExistente ? clienteActualizado : c));
-    } else {
-      actualizarClientes([clienteActualizado, ...clientes]);
+    // Candado de autorización: una venta a crédito que deja saldo pendiente exige el visto bueno de un supervisor
+    const saldoProyectado = Math.max(0, totalFacturaUsd - abonado);
+    if (!esContado && saldoProyectado > 0 && !autorizacionCredito) {
+      abrirModalAutorizacion();
+      return;
     }
 
-    // Adjuntar la venta al turno de caja activo
-    if (turnoActivo) {
-      actualizarTurnos(turnos.map(t =>
-        t.id === turnoActivo.id ? { ...t, ventasIds: [...t.ventasIds, nuevaCuenta.id] } : t
-      ));
-    }
-
-    actualizarCuentas([nuevaCuenta, ...cuentas]);
-    setModalCobroAbierto(false);
-    setFormVenta({ ...FORM_VENTA_INICIAL, bancoReceptor: configPagoMovil.bancoReceptor || "" });
-    setRenglonesVenta([]);
-    setItemActual(ITEM_ACTUAL_INICIAL);
-    setBusquedaProducto("");
-    setDocumentoBloqueado(false);
-    setErrorDocumento(false);
-    setModalAuditoriaAbierto(false);
-    setTokenPagoActivo(null);
-    setAvisoClienteEnEspera(null);
-    // Venta formalizada: el borrador de recuperación ya no aplica
-    localStorage.removeItem("duna_pos_draft");
-    setDraftDetectado(null);
-    inputProductoRef.current?.focus();
+    registrarVenta(autorizacionCredito);
   };
 
   const handleLimpiarTicket = () => {
     if (renglonesVenta.length > 0 && !confirm("¿Vaciar el ticket actual y empezar de nuevo?")) return;
     setModalCobroAbierto(false);
+    setModalAutorizacionAbierto(false);
+    setAutorizacionActual(null);
+    setAutorizacionCredito(null);
+    setQrDataUrl("");
     setFormVenta({ ...FORM_VENTA_INICIAL, bancoReceptor: configPagoMovil.bancoReceptor || "" });
     setRenglonesVenta([]);
     setItemActual(ITEM_ACTUAL_INICIAL);
@@ -801,7 +957,6 @@ export default function POSPage() {
   const handlePonerEnEspera = () => {
     if (renglonesVenta.length === 0) return;
     const ventaEnEspera = {
-      // eslint-disable-next-line react-hooks/purity -- id generado en un manejador de evento (click), no durante el render
       id: `espera_${Date.now()}`,
       fechaHora: new Date().toLocaleString("es-VE"),
       cliente: {
@@ -819,6 +974,10 @@ export default function POSPage() {
     actualizarVentasEnEspera([ventaEnEspera, ...ventasEnEspera]);
 
     setModalCobroAbierto(false);
+    setModalAutorizacionAbierto(false);
+    setAutorizacionActual(null);
+    setAutorizacionCredito(null);
+    setQrDataUrl("");
     setFormVenta({ ...FORM_VENTA_INICIAL, bancoReceptor: configPagoMovil.bancoReceptor || "" });
     setRenglonesVenta([]);
     setItemActual(ITEM_ACTUAL_INICIAL);
@@ -1358,6 +1517,20 @@ export default function POSPage() {
                 </div>
               </div>
 
+              {requiereAutorizacionSupervisor && (
+                autorizacionCredito ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 flex items-center gap-2 text-[11px] font-bold text-emerald-700">
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
+                    <span>Autorizado por {autorizacionCredito.supervisorNombre} · {autorizacionCredito.horaAutorizacion}</span>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 flex items-center gap-2 text-[11px] font-bold text-amber-700">
+                    <Lock className="w-4 h-4 shrink-0" />
+                    <span>Esta venta a crédito requiere autorización de un supervisor antes de registrarse.</span>
+                  </div>
+                )
+              )}
+
               {formVenta.condicionVenta === "CONTADO" ? (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
                   <p className="text-[11px] font-bold text-emerald-700">Venta de Contado: se cobra el 100% del total al momento, sin dejar saldo.</p>
@@ -1511,13 +1684,127 @@ export default function POSPage() {
                       ? "Esta referencia ya fue registrada anteriormente"
                       : undefined
                   }
-                  className="px-5 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-orange-500/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#FE6712]"
+                  className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed ${
+                    requiereAutorizacionSupervisor && !autorizacionCredito
+                      ? "bg-amber-600 hover:bg-amber-700 shadow-amber-500/20 disabled:hover:bg-amber-600"
+                      : "bg-[#FE6712] hover:bg-[#ea580c] shadow-orange-500/20 disabled:hover:bg-[#FE6712]"
+                  }`}
                 >
-                  <Check className="w-4 h-4" /> Registrar Factura
+                  {requiereAutorizacionSupervisor && !autorizacionCredito ? (
+                    <><Lock className="w-4 h-4" /> Solicitar Autorización</>
+                  ) : (
+                    <><Check className="w-4 h-4" /> Registrar Factura</>
+                  )}
                 </button>
               </div>
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Autorización de Supervisor (QR dinámico) */}
+      {modalAutorizacionAbierto && autorizacionActual && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900">Autorización de Supervisor Requerida</h3>
+                <p className="text-[11px] text-slate-400">Venta a crédito por ${autorizacionActual.montoUsd.toFixed(2)} (Bs. {formatearBs(autorizacionActual.montoUsd, tasaBcv)})</p>
+              </div>
+              <button onClick={() => setModalAutorizacionAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {autorizacionActual.status === "APROBADA" ? (
+              <div className="text-center space-y-3 py-2">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto animate-pulse">
+                  <Check className="w-8 h-8" />
+                </div>
+                <h4 className="text-base font-black text-emerald-700">¡Autorización Aprobada!</h4>
+                <p className="text-xs text-slate-500">
+                  Por <span className="font-bold text-slate-800">{autorizacionActual.supervisorInfo?.supervisorNombre}</span>
+                </p>
+                <p className="text-[11px] text-slate-400">Continuando con el registro de la factura…</p>
+              </div>
+            ) : autorizacionActual.status === "RECHAZADA" ? (
+              <div className="text-center space-y-3 py-2">
+                <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                  <X className="w-8 h-8" />
+                </div>
+                <h4 className="text-base font-black text-rose-700">Autorización Rechazada</h4>
+                <p className="text-xs text-slate-500">El supervisor rechazó esta venta a crédito desde su teléfono.</p>
+                <div className="flex flex-col gap-2 pt-2">
+                  <button type="button" onClick={abrirModalAutorizacion} className="w-full px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition">
+                    🔄 Solicitar de Nuevo
+                  </button>
+                  <button type="button" onClick={handlePausarPorAutorizacion} className="w-full px-3 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-bold transition">
+                    ⏸ Pausar y Mandar a Administración
+                  </button>
+                </div>
+              </div>
+            ) : autorizacionActual.status === "EXPIRADA" ? (
+              <div className="text-center space-y-3 py-2">
+                <div className="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+                  <AlertTriangle className="w-8 h-8" />
+                </div>
+                <h4 className="text-base font-black text-amber-700">Código QR Expirado</h4>
+                <p className="text-xs text-slate-500">El supervisor no escaneó el código a tiempo.</p>
+                <div className="flex flex-col gap-2 pt-2">
+                  <button type="button" onClick={abrirModalAutorizacion} className="w-full px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition">
+                    🔄 Regenerar QR
+                  </button>
+                  <button type="button" onClick={handlePausarPorAutorizacion} className="w-full px-3 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-bold transition">
+                    ⏸ Pausar y Mandar a Administración
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-center min-h-[180px]">
+                  {qrDataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- imagen data URL generada en cliente por la librería qrcode, incompatible con next/image
+                    <img src={qrDataUrl} alt="Código QR de autorización" className="w-44 h-44" />
+                  ) : (
+                    <Loader2 className="w-8 h-8 text-slate-300 animate-spin" />
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 text-center leading-relaxed">
+                  Pide al supervisor que escanee este código con su teléfono para aprobar la venta.
+                </p>
+                <div className="flex items-center justify-center gap-1.5 text-slate-700">
+                  <QrCode className="w-4 h-4" />
+                  <span className="text-2xl font-black tabular-nums">{segundosRestantes}s</span>
+                </div>
+
+                <button type="button" onClick={handlePausarPorAutorizacion} className="w-full px-3 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5">
+                  <PauseCircle className="w-3.5 h-3.5" /> Pausar y Mandar a Administración
+                </button>
+
+                {pinEmergenciaAbierto ? (
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={pinEmergenciaInput}
+                      onChange={(e) => setPinEmergenciaInput(e.target.value.replace(/\D/g, ""))}
+                      placeholder="••••"
+                      autoFocus
+                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-center tracking-[0.3em] text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                    />
+                    <button type="button" onClick={handleValidarPinEmergencia} className="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[11px] font-bold transition shrink-0">
+                      Validar
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setPinEmergenciaAbierto(true)} className="w-full text-center text-[10px] text-slate-400 hover:text-slate-600 underline transition">
+                    ¿Supervisor sin teléfono? Ingresar PIN manual (4 dígitos)
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

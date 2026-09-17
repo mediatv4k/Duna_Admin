@@ -174,6 +174,27 @@ const manualData = [
     palabrasClave: ["ventas en espera", "parked sales", "borrador", "crash recovery", "recuperar venta", "pausar venta"],
   },
   {
+    id: "POS_SUPERVISOR_OVERRIDE",
+    modulo: "CAJA",
+    ruta: "/pos",
+    titulo: "Autorización de Crédito en Caja por QR",
+    resumen: "Desbloqueo de ventas a crédito en mostrador mediante escaneo de código QR efímero desde el teléfono del supervisor sin exponer contraseñas.",
+    pasos: [
+      "En el panel de Cobro, si eliges 'Permite Crédito' y queda saldo pendiente por cobrar, el botón cambia a '🔒 Solicitar Autorización'.",
+      "Al pulsarlo se genera un código QR único y un contador de 60 segundos: el supervisor lo escanea con su teléfono para abrir el Portal del Supervisor (/supervisor).",
+      "El supervisor inicia sesión con su nombre y PIN, revisa el cliente y el monto, y pulsa '✓ APROBAR VENTA A CRÉDITO' o '✕ RECHAZAR'.",
+      "En caja, el sistema detecta la aprobación en segundos (sin recargar la página), muestra el check verde con el nombre del supervisor y continúa la facturación automáticamente.",
+      "Si el código expira sin respuesta, aparece '🔄 Regenerar QR'; si el supervisor no tiene su teléfono a mano, usa el enlace 'Ingresar PIN manual (4 dígitos)' con la clave de emergencia.",
+      "También se puede pulsar '⏸ Pausar y Mandar a Administración' en cualquier momento para liberar la caja sin perder el ticket.",
+    ],
+    tips: [
+      "Cada factura autorizada guarda quién aprobó y a qué hora; ese dato queda visible como sello 'Autorizado' en la tabla de /cxc para auditoría posterior.",
+      "El PIN de emergencia por defecto es 9999; cámbialo desde la configuración de supervisores para producción.",
+      "Solo se pide autorización cuando la venta a crédito deja saldo pendiente real: si el abono cubre el 100% del total, no hace falta visto bueno.",
+    ],
+    palabrasClave: ["supervisor", "autorizacion", "credito", "qr", "codigo qr", "pin de emergencia", "candado", "override"],
+  },
+  {
     id: "control-contado-credito",
     modulo: "CAJA",
     ruta: "/pos",

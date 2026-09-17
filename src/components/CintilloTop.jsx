@@ -32,8 +32,8 @@ export default function CintilloTop() {
   const { usuario, cambiarRol } = useUser();
   const { perfil, setPerfil } = useBusinessProfile();
 
-  // Portal público de autoservicio: sin chrome administrativo
-  if (pathname?.startsWith("/pago/")) return null;
+  // Portal público de autoservicio / portal móvil del supervisor: sin chrome administrativo
+  if (pathname?.startsWith("/pago/") || pathname?.startsWith("/supervisor")) return null;
 
   return (
     <div className="sticky top-0 z-50 bg-[#0a0e17] text-slate-300 border-b border-white/5">
