@@ -1,6 +1,7 @@
 "use client";
 import React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { MapPin, Coins, RefreshCw, UserRound, Store, Wallet } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser, ROLES } from "@/context/UserContext";
@@ -26,9 +27,13 @@ const PERFIL_ETIQUETA = {
 };
 
 export default function CintilloTop() {
+  const pathname = usePathname();
   const { modoMoneda, setModoMoneda, tasaBcv, cargandoTasa, ultimaHora, consultarApiBCV } = useCurrency();
   const { usuario, cambiarRol } = useUser();
   const { perfil, setPerfil } = useBusinessProfile();
+
+  // Portal público de autoservicio: sin chrome administrativo
+  if (pathname?.startsWith("/pago/")) return null;
 
   return (
     <div className="sticky top-0 z-50 bg-[#0a0e17] text-slate-300 border-b border-white/5">

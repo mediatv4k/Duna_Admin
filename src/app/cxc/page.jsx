@@ -3,10 +3,11 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Search, Plus, Check, X,
-  Receipt, Trash2, MessageCircle, ShieldCheck, Wallet
+  Receipt, Trash2, MessageCircle, ShieldCheck, Wallet, Copy, Settings, Smartphone
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser } from "@/context/UserContext";
+import bancosVenezuela from "@/data/bancosVenezuela";
 
 const PAISES = [
   { code: "+58", name: "Venezuela" },
@@ -65,6 +66,22 @@ const ITEM_ACTUAL_INICIAL = {
   toppingsSeleccionadosIds: [],
   cantidad: 1,
 };
+
+// Datos fijos del comercio para Pago Móvil, con valores por defecto si el usuario aún no los configuró
+const CONFIG_PAGOMOVIL_DEFECTO = {
+  bancoReceptor: "0102",
+  telefonoReceptor: "04141234567",
+  rifReceptor: "J-12345678-0",
+  nombreTitular: "Mi Comercio C.A.",
+};
+
+// Token corto de autoservicio para el portal público /pago/[token]
+function generarTokenPago() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let sufijo = "";
+  for (let i = 0; i < 6; i++) sufijo += chars[Math.floor(Math.random() * chars.length)];
+  return `tk-${sufijo}`;
+}
 
 function limpiarTelefono(str) {
   return String(str || "").replace(/\D/g, "").replace(/^0+/, "");
@@ -126,6 +143,15 @@ export default function CXCPage() {
 
   const [modalAuditoriaAbierto, setModalAuditoriaAbierto] = useState(false);
 
+  const [configPagoMovil, setConfigPagoMovil] = useState(CONFIG_PAGOMOVIL_DEFECTO);
+  const [modalConfigPagoMovilAbierto, setModalConfigPagoMovilAbierto] = useState(false);
+  const [formConfigPagoMovil, setFormConfigPagoMovil] = useState(CONFIG_PAGOMOVIL_DEFECTO);
+  const [copiadoDatosPagoMovil, setCopiadoDatosPagoMovil] = useState(false);
+
+  const [pagosPendientes, setPagosPendientes] = useState([]);
+  const [tokenPagoActivo, setTokenPagoActivo] = useState(null);
+  const [modalComprobanteAbierto, setModalComprobanteAbierto] = useState(false);
+
   // Cargar datos locales
   useEffect(() => {
     const guardadas = localStorage.getItem("duna_cxc_records");
@@ -164,11 +190,56 @@ export default function CXCPage() {
         console.error(e);
       }
     }
+
+    const configGuardada = localStorage.getItem("duna_config_pagomovil");
+    if (configGuardada) {
+      try {
+        const parsed = JSON.parse(configGuardada);
+        setConfigPagoMovil(parsed);
+        setFormVenta(prev => ({ ...prev, bancoReceptor: parsed.bancoReceptor || "" }));
+      } catch (e) {
+        console.error(e);
+      }
+    } else {
+      // Primera vez: siembra los datos de cobro con valores por defecto
+      localStorage.setItem("duna_config_pagomovil", JSON.stringify(CONFIG_PAGOMOVIL_DEFECTO));
+      setFormVenta(prev => ({ ...prev, bancoReceptor: CONFIG_PAGOMOVIL_DEFECTO.bancoReceptor }));
+    }
+
+    const pagosGuardados = localStorage.getItem("duna_pagos_pendientes");
+    if (pagosGuardados) {
+      try {
+        setPagosPendientes(JSON.parse(pagosGuardados));
+      } catch (e) {
+        console.error(e);
+      }
+    }
   }, []);
 
   const actualizarCuentas = (nuevas) => {
     setCuentas(nuevas);
     localStorage.setItem("duna_cxc_records", JSON.stringify(nuevas));
+  };
+
+  const actualizarConfigPagoMovil = (nuevaConfig) => {
+    setConfigPagoMovil(nuevaConfig);
+    localStorage.setItem("duna_config_pagomovil", JSON.stringify(nuevaConfig));
+  };
+
+  const abrirModalConfigPagoMovil = () => {
+    setFormConfigPagoMovil(configPagoMovil);
+    setModalConfigPagoMovilAbierto(true);
+  };
+
+  const handleGuardarConfigPagoMovil = () => {
+    actualizarConfigPagoMovil(formConfigPagoMovil);
+    setFormVenta(prev => ({ ...prev, bancoReceptor: formConfigPagoMovil.bancoReceptor || prev.bancoReceptor }));
+    setModalConfigPagoMovilAbierto(false);
+  };
+
+  const actualizarPagosPendientes = (nuevos) => {
+    setPagosPendientes(nuevos);
+    localStorage.setItem("duna_pagos_pendientes", JSON.stringify(nuevos));
   };
 
   const actualizarProductosInventario = (nuevos) => {
@@ -430,6 +501,76 @@ export default function CXCPage() {
     cuentas.flatMap(c => (c.historialAbonos || []).map(h => h.referencia).filter(Boolean))
   );
 
+  // Escudo anti-duplicados en tiempo real: se valida mientras se tipea la referencia
+  const referenciaVentaDuplicada = requiereDatosTransferenciaVenta &&
+    formVenta.referencia.trim().length > 0 &&
+    referenciasUsadas.has(formVenta.referencia.trim());
+
+  // Datos y mensaje para el despacho de cobro por Pago Móvil vía WhatsApp
+  const bancoReceptorSeleccionado = bancosVenezuela.find(b => b.codigo === formVenta.bancoReceptor) || null;
+  const montoPagoMovilUsd = formVenta.condicionVenta === "CONTADO" ? totalFacturaUsd : montoAbonadoUsd;
+  const mensajePagoMovil = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza el Pago Móvil con estos datos:\n🏦 Banco: *${bancoReceptorSeleccionado ? bancoReceptorSeleccionado.display : "(configura el banco receptor)"}*\n📱 Teléfono: *${configPagoMovil.telefonoReceptor || "(sin configurar)"}*\n🆔 Cédula/RIF: *${configPagoMovil.rifReceptor || "(sin configurar)"}*\n👤 Titular: *${configPagoMovil.nombreTitular || "(sin configurar)"}*\n💰 Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (≈ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nPor favor responde a este mensaje con la captura del comprobante o el número de referencia para emitir tu factura.`;
+
+  const handleEnviarDatosPagoMovil = () => {
+    const numero = `${(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`;
+    window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensajePagoMovil)}`, "_blank");
+  };
+
+  const handleCopiarDatosPagoMovil = async () => {
+    try {
+      await navigator.clipboard.writeText(mensajePagoMovil);
+      setCopiadoDatosPagoMovil(true);
+      setTimeout(() => setCopiadoDatosPagoMovil(false), 1500);
+    } catch (e) {
+      alert("No se pudo copiar automáticamente. Copia el mensaje manualmente.");
+    }
+  };
+
+  // El cliente encontrado en duna_pagos_pendientes para el token generado en esta venta (se actualiza por polling)
+  const pagoMovilActivo = tokenPagoActivo ? pagosPendientes.find(p => p.token === tokenPagoActivo) || null : null;
+
+  // Crea la intención de pago con token y abre WhatsApp con el link de autoservicio
+  const handleEnviarLinkPagoMovil = () => {
+    const token = generarTokenPago();
+    const nuevaIntencion = {
+      token,
+      fechaCreacion: new Date().toLocaleString("es-VE"),
+      clienteNombre: formVenta.cliente,
+      clienteTelefono: `${formVenta.paisCodigo}${limpiarTelefono(formVenta.telefono)}`,
+      montoUsd: montoPagoMovilUsd,
+      montoBs: montoPagoMovilUsd * tasaBcv,
+      renglones: renglonesVenta,
+      status: "PENDIENTE",
+      referenciaReportada: "",
+      imagenComprobante: null,
+    };
+    actualizarPagosPendientes([nuevaIntencion, ...pagosPendientes]);
+    setTokenPagoActivo(token);
+
+    const link = `${window.location.origin}/pago/${token}`;
+    const numero = `${(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`;
+    const mensaje = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza tu Pago Móvil desde este link seguro:\n${link}\n\n💰 Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (≈ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nAl confirmar tu pago allí, tu factura queda lista para validarse en caja.`;
+    window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`, "_blank");
+  };
+
+  // Escucha reactiva: revisa cada 2s si el cliente reportó el comprobante para el token activo
+  useEffect(() => {
+    if (!tokenPagoActivo) return undefined;
+    const intervalo = setInterval(() => {
+      try {
+        const guardados = JSON.parse(localStorage.getItem("duna_pagos_pendientes") || "[]");
+        const match = guardados.find(p => p.token === tokenPagoActivo);
+        if (match && match.status === "REPORTADO") {
+          setPagosPendientes(guardados);
+          setFormVenta(prev => ({ ...prev, referencia: match.referenciaReportada || prev.referencia }));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }, 2000);
+    return () => clearInterval(intervalo);
+  }, [tokenPagoActivo]);
+
   // Guardar Venta y registrar cuenta por cobrar
   const handleCrearVenta = (e) => {
     e.preventDefault();
@@ -544,24 +685,26 @@ export default function CXCPage() {
 
     actualizarCuentas([nuevaCuenta, ...cuentas]);
     setModalVentaAbierto(false);
-    setFormVenta(FORM_VENTA_INICIAL);
+    setFormVenta({ ...FORM_VENTA_INICIAL, bancoReceptor: configPagoMovil.bancoReceptor || "" });
     setRenglonesVenta([]);
     setItemActual(ITEM_ACTUAL_INICIAL);
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
     setModalAuditoriaAbierto(false);
+    setTokenPagoActivo(null);
   };
 
   const handleCerrarModalVenta = () => {
     setModalVentaAbierto(false);
-    setFormVenta(FORM_VENTA_INICIAL);
+    setFormVenta({ ...FORM_VENTA_INICIAL, bancoReceptor: configPagoMovil.bancoReceptor || "" });
     setRenglonesVenta([]);
     setItemActual(ITEM_ACTUAL_INICIAL);
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
     setModalAuditoriaAbierto(false);
+    setTokenPagoActivo(null);
   };
 
   // Modal dedicado de abonos posteriores
@@ -578,6 +721,9 @@ export default function CXCPage() {
     : (Number(montoAbonoModal) || 0);
 
   const requiereDatosTransferenciaAbono = METODOS_CON_REFERENCIA.includes(pagoAbonoModal.metodoPago);
+  const referenciaAbonoDuplicada = requiereDatosTransferenciaAbono &&
+    pagoAbonoModal.referencia.trim().length > 0 &&
+    referenciasUsadas.has(pagoAbonoModal.referencia.trim());
 
   const confirmarAbono = () => {
     if (!cuentaAbonoActual || montoAbonoModalUsd <= 0) return;
@@ -1268,7 +1414,12 @@ export default function CXCPage() {
               {(Number(formVenta.montoAbonadoInput) > 0 || formVenta.condicionVenta === "CONTADO") && (
                 <div className="space-y-3 pt-3 border-t border-dashed border-slate-200">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Método de Pago</label>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1 flex items-center justify-between">
+                      <span>Método de Pago</span>
+                      <button type="button" onClick={abrirModalConfigPagoMovil} className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-[#FE6712] transition">
+                        <Settings className="w-3 h-3" /> Configurar datos de cobro
+                      </button>
+                    </label>
                     <select
                       value={formVenta.metodoPago}
                       onChange={(e) => setFormVenta({ ...formVenta, metodoPago: e.target.value })}
@@ -1279,10 +1430,85 @@ export default function CXCPage() {
                   </div>
                   {requiereDatosTransferenciaVenta && (
                     <div className="grid grid-cols-2 gap-3">
-                      <input type="text" value={formVenta.bancoEmisor} onChange={(e) => setFormVenta({ ...formVenta, bancoEmisor: e.target.value })} placeholder="Banco emisor" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
-                      <input type="text" value={formVenta.bancoReceptor} onChange={(e) => setFormVenta({ ...formVenta, bancoReceptor: e.target.value })} placeholder="Banco receptor" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
-                      <input type="text" required value={formVenta.referencia} onChange={(e) => setFormVenta({ ...formVenta, referencia: e.target.value })} placeholder="N° de referencia *" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
-                      <input type="text" value={formVenta.titular} onChange={(e) => setFormVenta({ ...formVenta, titular: e.target.value })} placeholder="Teléfono / Titular" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                      <select value={formVenta.bancoEmisor} onChange={(e) => setFormVenta({ ...formVenta, bancoEmisor: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                        <option value="">Banco emisor...</option>
+                        {bancosVenezuela.map(b => <option key={b.codigo} value={b.codigo}>{b.display}</option>)}
+                      </select>
+                      <select value={formVenta.bancoReceptor} onChange={(e) => setFormVenta({ ...formVenta, bancoReceptor: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                        <option value="">Banco receptor...</option>
+                        {bancosVenezuela.map(b => <option key={b.codigo} value={b.codigo}>{b.display}</option>)}
+                      </select>
+                      <div className="col-span-2">
+                        <input
+                          type="text"
+                          required
+                          value={formVenta.referencia}
+                          onChange={(e) => setFormVenta({ ...formVenta, referencia: e.target.value })}
+                          placeholder="N° de referencia *"
+                          className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none ${
+                            referenciaVentaDuplicada ? "bg-rose-50 border-rose-400" : "bg-slate-50 border-slate-200 focus:border-[#FE6712]"
+                          }`}
+                        />
+                        {referenciaVentaDuplicada && (
+                          <p className="text-[10px] text-rose-600 font-bold mt-1">Esta referencia ya fue registrada anteriormente.</p>
+                        )}
+                      </div>
+                      <input type="text" value={formVenta.titular} onChange={(e) => setFormVenta({ ...formVenta, titular: e.target.value })} placeholder="Teléfono / Titular" className="col-span-2 w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                    </div>
+                  )}
+                  {formVenta.metodoPago === "Pago Móvil" && (
+                    <div className="space-y-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleEnviarLinkPagoMovil}
+                        disabled={!formVenta.telefono}
+                        title={formVenta.telefono ? "Crear link de autoservicio y enviarlo por WhatsApp" : "Sin teléfono del cliente registrado"}
+                        className="w-full px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none shadow-sm shadow-orange-500/20"
+                      >
+                        <Smartphone className="w-3.5 h-3.5" /> Enviar Link de Pago Móvil por WhatsApp
+                      </button>
+
+                      {pagoMovilActivo?.status === "REPORTADO" ? (
+                        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 flex items-center gap-3 animate-pulse">
+                          <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                            <Check className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[11px] font-black text-emerald-700 block">✓ ¡Comprobante reportado por el cliente!</span>
+                            <span className="text-[10px] text-emerald-600">Referencia: {pagoMovilActivo.referenciaReportada || "—"}</span>
+                          </div>
+                          {pagoMovilActivo.imagenComprobante && (
+                            /* eslint-disable-next-line @next/next/no-img-element -- miniatura Base64 generada por el cliente, incompatible con next/image */
+                            <img
+                              src={pagoMovilActivo.imagenComprobante}
+                              alt="Comprobante"
+                              onClick={() => setModalComprobanteAbierto(true)}
+                              className="w-10 h-10 rounded-lg object-cover border border-emerald-300 cursor-pointer shrink-0 hover:opacity-80 transition"
+                            />
+                          )}
+                        </div>
+                      ) : tokenPagoActivo ? (
+                        <p className="text-[10px] text-slate-400 text-center">Esperando que el cliente reporte su pago desde el link enviado…</p>
+                      ) : null}
+
+                      <div className="flex flex-col sm:flex-row items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleEnviarDatosPagoMovil}
+                          disabled={!formVenta.telefono}
+                          title={formVenta.telefono ? "Enviar datos de pago móvil por WhatsApp" : "Sin teléfono del cliente registrado"}
+                          className="w-full sm:flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" /> Enviar Datos Pago Móvil por WhatsApp
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCopiarDatosPagoMovil}
+                          className="w-full sm:w-auto px-3 py-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 shrink-0"
+                        >
+                          <Copy className="w-3.5 h-3.5" /> {copiadoDatosPagoMovil ? "¡Copiado!" : "Copiar Datos"}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1298,12 +1524,14 @@ export default function CXCPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={formVenta.numeroDocumento.trim().length < 5 || renglonesVenta.length === 0}
+                  disabled={formVenta.numeroDocumento.trim().length < 5 || renglonesVenta.length === 0 || referenciaVentaDuplicada}
                   title={
                     formVenta.numeroDocumento.trim().length < 5
                       ? "La Cédula o RIF es obligatoria para emitir la factura"
                       : renglonesVenta.length === 0
                       ? "Agrega al menos un producto al ticket"
+                      : referenciaVentaDuplicada
+                      ? "Esta referencia ya fue registrada anteriormente"
                       : undefined
                   }
                   className="px-5 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-orange-500/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#FE6712]"
@@ -1376,10 +1604,30 @@ export default function CXCPage() {
             </div>
             {requiereDatosTransferenciaAbono && (
               <div className="grid grid-cols-2 gap-3">
-                <input type="text" value={pagoAbonoModal.bancoEmisor} onChange={(e) => setPagoAbonoModal({ ...pagoAbonoModal, bancoEmisor: e.target.value })} placeholder="Banco emisor" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
-                <input type="text" value={pagoAbonoModal.bancoReceptor} onChange={(e) => setPagoAbonoModal({ ...pagoAbonoModal, bancoReceptor: e.target.value })} placeholder="Banco receptor" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
-                <input type="text" required value={pagoAbonoModal.referencia} onChange={(e) => setPagoAbonoModal({ ...pagoAbonoModal, referencia: e.target.value })} placeholder="N° de referencia *" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
-                <input type="text" value={pagoAbonoModal.titular} onChange={(e) => setPagoAbonoModal({ ...pagoAbonoModal, titular: e.target.value })} placeholder="Teléfono / Titular" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                <select value={pagoAbonoModal.bancoEmisor} onChange={(e) => setPagoAbonoModal({ ...pagoAbonoModal, bancoEmisor: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                  <option value="">Banco emisor...</option>
+                  {bancosVenezuela.map(b => <option key={b.codigo} value={b.codigo}>{b.display}</option>)}
+                </select>
+                <select value={pagoAbonoModal.bancoReceptor} onChange={(e) => setPagoAbonoModal({ ...pagoAbonoModal, bancoReceptor: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                  <option value="">Banco receptor...</option>
+                  {bancosVenezuela.map(b => <option key={b.codigo} value={b.codigo}>{b.display}</option>)}
+                </select>
+                <div className="col-span-2">
+                  <input
+                    type="text"
+                    required
+                    value={pagoAbonoModal.referencia}
+                    onChange={(e) => setPagoAbonoModal({ ...pagoAbonoModal, referencia: e.target.value })}
+                    placeholder="N° de referencia *"
+                    className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none ${
+                      referenciaAbonoDuplicada ? "bg-rose-50 border-rose-400" : "bg-slate-50 border-slate-200 focus:border-[#FE6712]"
+                    }`}
+                  />
+                  {referenciaAbonoDuplicada && (
+                    <p className="text-[10px] text-rose-600 font-bold mt-1">Esta referencia ya fue registrada anteriormente.</p>
+                  )}
+                </div>
+                <input type="text" value={pagoAbonoModal.titular} onChange={(e) => setPagoAbonoModal({ ...pagoAbonoModal, titular: e.target.value })} placeholder="Teléfono / Titular" className="col-span-2 w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
               </div>
             )}
 
@@ -1390,7 +1638,7 @@ export default function CXCPage() {
               <button
                 type="button"
                 onClick={confirmarAbono}
-                disabled={montoAbonoModalUsd <= 0}
+                disabled={montoAbonoModalUsd <= 0 || referenciaAbonoDuplicada}
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
               >
                 <Check className="w-4 h-4" /> Confirmar Abono
@@ -1519,6 +1767,100 @@ export default function CXCPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Modal Configurar Datos de Cobro (Pago Móvil) */}
+      {modalConfigPagoMovilAbierto && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900">Datos de Cobro</h3>
+                <p className="text-[11px] text-slate-400">Se guardan en este dispositivo para no re-escribirlos en cada venta</p>
+              </div>
+              <button onClick={() => setModalConfigPagoMovilAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-600 block mb-1">Banco Receptor</label>
+              <select
+                value={formConfigPagoMovil.bancoReceptor}
+                onChange={(e) => setFormConfigPagoMovil({ ...formConfigPagoMovil, bancoReceptor: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+              >
+                <option value="">Seleccionar banco...</option>
+                {bancosVenezuela.map(b => <option key={b.codigo} value={b.codigo}>{b.display}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-600 block mb-1">Teléfono Receptor</label>
+              <input
+                type="tel"
+                value={formConfigPagoMovil.telefonoReceptor}
+                onChange={(e) => setFormConfigPagoMovil({ ...formConfigPagoMovil, telefonoReceptor: e.target.value })}
+                placeholder="0412-1234567"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-600 block mb-1">Cédula / RIF Receptor</label>
+              <input
+                type="text"
+                value={formConfigPagoMovil.rifReceptor}
+                onChange={(e) => setFormConfigPagoMovil({ ...formConfigPagoMovil, rifReceptor: e.target.value })}
+                placeholder="J-12345678-0"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-600 block mb-1">Nombre / Razón Social Titular</label>
+              <input
+                type="text"
+                value={formConfigPagoMovil.nombreTitular}
+                onChange={(e) => setFormConfigPagoMovil({ ...formConfigPagoMovil, nombreTitular: e.target.value })}
+                placeholder="Mi Comercio C.A."
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button type="button" onClick={() => setModalConfigPagoMovilAbierto(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition">
+                Cancelar
+              </button>
+              <button type="button" onClick={handleGuardarConfigPagoMovil} className="px-5 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                <Check className="w-4 h-4" /> Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visor de Comprobante a pantalla completa */}
+      {modalComprobanteAbierto && pagoMovilActivo?.imagenComprobante && (
+        <div
+          className="fixed inset-0 z-[60] bg-slate-900/90 flex items-center justify-center p-4"
+          onClick={() => setModalComprobanteAbierto(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setModalComprobanteAbierto(false)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element -- imagen Base64 generada por el cliente, incompatible con next/image */}
+          <img
+            src={pagoMovilActivo.imagenComprobante}
+            alt="Comprobante de pago"
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-full rounded-2xl shadow-2xl object-contain"
+          />
         </div>
       )}
 
