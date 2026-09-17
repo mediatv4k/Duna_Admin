@@ -1,7 +1,7 @@
 ﻿import React from "react";
 import { 
   Layers, Receipt, ShoppingCart, Boxes, PlusCircle, 
-  Wallet, Truck, CheckCircle2, ArrowRight, Sparkles, Store
+  Wallet, Truck, CheckCircle2, Sparkles
 } from "lucide-react";
 
 export default function Home() {
