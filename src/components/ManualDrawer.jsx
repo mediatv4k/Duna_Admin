@@ -8,6 +8,7 @@ const MODULO_LABEL = {
   INVENTARIO: "Inventario",
   CXC: "Ventas & CXC",
   CAJA: "Caja",
+  COMPRAS: "Compras",
   GENERAL: "General",
 };
 
@@ -15,12 +16,14 @@ const MODULO_ESTILO = {
   INVENTARIO: "bg-orange-50 text-[#FE6712]",
   CXC: "bg-emerald-50 text-emerald-700",
   CAJA: "bg-sky-50 text-sky-700",
+  COMPRAS: "bg-amber-50 text-amber-700",
   GENERAL: "bg-slate-100 text-slate-500",
 };
 
 const RUTA_A_MODULO = {
   "/cxc": "CXC",
   "/inventario": "INVENTARIO",
+  "/compras": "COMPRAS",
   "/": "GENERAL",
 };
 

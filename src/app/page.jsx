@@ -176,9 +176,11 @@ export default function Home() {
                   </p>
                 </div>
               </div>
+              <Link href="/compras">
               <button className="mt-6 w-full py-3 bg-slate-50 hover:bg-rose-600 text-slate-700 hover:text-white rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 border border-slate-200 hover:border-transparent">
-                <PlusCircle className="w-4 h-4" /> Registrar Cuenta por Pagar
+                <PlusCircle className="w-4 h-4" /> Registrar Compra
               </button>
+              </Link>
             </div>
 
             {/* Módulo Inventario */}

@@ -111,6 +111,26 @@ const manualData = [
     ],
     palabrasClave: ["contado", "credito", "abono", "condicion de venta", "saldo pendiente"],
   },
+  {
+    id: "COMPRAS_RECEPCION",
+    modulo: "COMPRAS",
+    ruta: "/compras",
+    titulo: "Recepción de Compras y Costo Ponderado",
+    resumen: "Cómo ingresar mercancía de proveedores, alimentar el stock físico y recalcular costos automáticamente.",
+    pasos: [
+      "En 'Compras', busca el proveedor por RIF o razón social; si no existe, créalo con '+ Nuevo Proveedor' indicando sus días de crédito.",
+      "Completa el Nº de Factura del proveedor (obligatorio), el Nº de Control Fiscal y la Fecha de Emisión: la Fecha de Vencimiento se calcula sola según los días de crédito.",
+      "Elige la Condición (Contado o Crédito) para esa factura de compra.",
+      "Busca cada producto del inventario, selecciona la variante si aplica, indica Cantidad y Costo Unitario, y pulsa 'Agregar Renglón'.",
+      "Repite por cada artículo recibido y revisa el total antes de pulsar 'Registrar Compra'.",
+    ],
+    tips: [
+      "Al registrar la compra, el stock del producto (o de la variante elegida) sube automáticamente y el costo se recalcula como Costo Promedio Ponderado: ((Stock Anterior × Costo Anterior) + (Cantidad × Costo Nuevo)) ÷ (Stock Anterior + Cantidad).",
+      "Si la compra es a crédito, queda registrada como deuda pendiente con proveedor; si es de contado, se marca como pagada con saldo $0.00.",
+      "Usa 'Ver Detalle' en el histórico para revisar los renglones exactos de cualquier compra anterior.",
+    ],
+    palabrasClave: ["compras", "proveedores", "costo promedio", "cpp", "recepcion", "factura de compra", "stock"],
+  },
 ];
 
 export default manualData;
