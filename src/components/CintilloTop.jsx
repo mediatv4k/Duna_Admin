@@ -1,6 +1,7 @@
 "use client";
 import React from "react";
-import { MapPin, Coins, RefreshCw, UserRound, Store } from "lucide-react";
+import Link from "next/link";
+import { MapPin, Coins, RefreshCw, UserRound, Store, Wallet } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser, ROLES } from "@/context/UserContext";
 import { useBusinessProfile, PERFILES_NEGOCIO } from "@/context/BusinessProfileContext";
@@ -75,6 +76,15 @@ export default function CintilloTop() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/cxp"
+            title="Cuentas por Pagar"
+            className="hidden sm:flex items-center gap-1.5 bg-white/5 hover:bg-white/10 rounded-full px-2.5 py-1 border border-white/10 hover:border-[#FE6712] transition shrink-0"
+          >
+            <Wallet className="w-3.5 h-3.5 text-[#FE6712] shrink-0" />
+            <span className="font-bold text-slate-300 hover:text-white whitespace-nowrap">CXP</span>
+          </Link>
+
           <div className="flex items-center bg-white/5 rounded-full p-0.5 border border-white/10">
             {OPCIONES_MODO.map((op) => (
               <button

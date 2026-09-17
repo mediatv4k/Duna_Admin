@@ -13,6 +13,8 @@ export default function Home() {
   const [kpis, setKpis] = useState({
     porCobrar: 0,
     clientesConSaldo: 0,
+    porPagar: 0,
+    proveedoresPendientes: 0,
     cobradoEfectivo: 0,
     inventarioTotal: 0,
     articulosRegistrados: 0,
@@ -22,11 +24,15 @@ export default function Home() {
     try {
       const cuentas = JSON.parse(localStorage.getItem("duna_cxc_records") || "[]");
       const productos = JSON.parse(localStorage.getItem("duna_inventario_prods") || "[]");
+      const cxp = JSON.parse(localStorage.getItem("duna_cxp") || "[]");
+      const cxpPendientes = cxp.filter(c => (c.saldoPendienteUsd || 0) > 0);
 
       // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente
       setKpis({
         porCobrar: cuentas.reduce((acc, c) => acc + (c.saldo || 0), 0),
         clientesConSaldo: cuentas.filter(c => (c.saldo || 0) > 0).length,
+        porPagar: cxpPendientes.reduce((acc, c) => acc + (c.saldoPendienteUsd || 0), 0),
+        proveedoresPendientes: new Set(cxpPendientes.map(c => c.proveedorId)).size,
         cobradoEfectivo: cuentas.reduce((acc, c) => acc + (c.abonado || 0), 0),
         inventarioTotal: productos.reduce((acc, p) => acc + (p.price || 0) * (p.stock || 0), 0),
         articulosRegistrados: productos.length,
@@ -100,16 +106,16 @@ export default function Home() {
             <div className="text-xs text-slate-400 mt-1 font-medium">{kpis.clientesConSaldo} clientes con saldo</div>
           </div>
 
-          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition">
+          <Link href="/cxp" className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md hover:border-rose-300 transition block">
             <div className="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider mb-2">
               <span>Por Pagar (CXP)</span>
               <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
                 <Truck className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-slate-900">$0.00</div>
-            <div className="text-xs text-slate-400 mt-1 font-medium">0 proveedores pendientes</div>
-          </div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">{formatearMonto(kpis.porPagar)}</div>
+            <div className="text-xs text-slate-400 mt-1 font-medium">{kpis.proveedoresPendientes} proveedores pendientes</div>
+          </Link>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition">
             <div className="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider mb-2">

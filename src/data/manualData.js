@@ -131,6 +131,26 @@ const manualData = [
     ],
     palabrasClave: ["compras", "proveedores", "costo promedio", "cpp", "recepcion", "factura de compra", "stock"],
   },
+  {
+    id: "CXP_GESTION",
+    modulo: "CXP",
+    ruta: "/cxp",
+    titulo: "Gestión de Cuentas por Pagar y Semáforo de Vencimientos",
+    resumen: "Control de compromisos con proveedores, semáforo de alertas (verde/amarillo/rojo) y abonos bimonetarios con escudo anti-duplicados.",
+    pasos: [
+      "En 'Cuentas por Pagar', revisa las tarjetas de resumen: Deuda Global, Vencido, Por Vencer (≤5 días) y Al Día.",
+      "Usa los filtros rápidos (Todas, Vencidas, Por Vencer, Al Día, Pagadas) para enfocar la tabla en lo que necesitas atender.",
+      "Cada factura muestra un semáforo: rojo si está vencida, ámbar si vence en 5 días o menos, verde si está al día o pagada.",
+      "Pulsa 'Abonar / Liquidar' para pagar: elige moneda ($ o Bs), usa 'Pagar 100% (Finiquito)' o ingresa un abono parcial, selecciona el método de pago y, si es transferencia o pago móvil, indica banco y número de referencia.",
+      "Confirma el pago: el saldo de la factura se descuenta al instante y, si llega a $0.00, pasa a estado 'Pagada'.",
+    ],
+    tips: [
+      "El sistema rechaza una referencia bancaria si ya fue usada antes en otro pago a proveedores, para evitar pagos duplicados.",
+      "Usa el ícono de historial en cada fila para ver todos los abonos previos de esa factura, con fecha, monto y método.",
+      "Las facturas de crédito registradas en 'Compras' aparecen aquí automáticamente; las de contado ya llegan marcadas como pagadas.",
+    ],
+    palabrasClave: ["cxp", "cuentas por pagar", "proveedores", "vencimiento", "semaforo", "finiquito", "referencia"],
+  },
 ];
 
 export default manualData;
