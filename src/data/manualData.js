@@ -94,6 +94,26 @@ const manualData = [
     palabrasClave: ["deuda", "auditoria", "facturas vencidas", "cobranza", "saldo", "al dia"],
   },
   {
+    id: "CXC_TICKET_MULTI",
+    modulo: "CXC",
+    ruta: "/cxc",
+    titulo: "Ventas Multi-Producto y Carrito en Mostrador",
+    resumen: "Cómo emitir facturas con múltiples artículos, variantes, toppings y recálculo acumulado.",
+    pasos: [
+      "En 'Nueva Venta / Factura', busca cada producto por nombre, SKU o escaneando su código de barras.",
+      "Si el producto tiene sabores/variantes o toppings, elígelos antes de agregarlo; luego indica la cantidad y pulsa '+ Agregar al Ticket'.",
+      "Repite la búsqueda para cada artículo: si vuelves a agregar el mismo producto con la misma variante y los mismos toppings, su cantidad se suma automáticamente en vez de crear una fila duplicada.",
+      "En la bandeja del ticket ajusta cantidades con los botones [-]/[+] o escribiendo el número, y quita renglones con el ícono de papelera.",
+      "Revisa el 'Total Factura' ($ y Bs) antes de definir el abono y confirmar con 'Registrar Factura'.",
+    ],
+    tips: [
+      "Un lector de código de barras que escribe el código y envía Enter agrega la unidad directo al ticket, sin pasos extra (salvo que el producto exija elegir variante).",
+      "El stock se descuenta de cada producto (o de su variante específica) por separado al confirmar la factura.",
+      "El mensaje de WhatsApp de cobranza numera todos los renglones del ticket, con su variante, extras y subtotal.",
+    ],
+    palabrasClave: ["ticket", "carrito", "multi-producto", "renglones", "mostrador", "pos", "multi-renglon"],
+  },
+  {
     id: "control-contado-credito",
     modulo: "CXC",
     ruta: "/cxc",

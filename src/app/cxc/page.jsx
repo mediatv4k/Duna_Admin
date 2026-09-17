@@ -52,16 +52,18 @@ const FORM_VENTA_INICIAL = {
   telefono: "",
   direccion: "",
   condicionVenta: "CREDITO",
-  productoId: "",
-  varianteNombre: "",
-  toppingsSeleccionadosIds: [],
-  cantidad: 1,
-  precioUnitario: 0,
-  montoTotal: 0,
   monedaAbono: "usd",
   montoAbonadoInput: "",
   ...DATOS_PAGO_INICIAL,
   nota: ""
+};
+
+// Ítem en configuración antes de agregarse como renglón al ticket
+const ITEM_ACTUAL_INICIAL = {
+  productoId: "",
+  varianteNombre: "",
+  toppingsSeleccionadosIds: [],
+  cantidad: 1,
 };
 
 function limpiarTelefono(str) {
@@ -107,6 +109,8 @@ export default function CXCPage() {
   const [documentoBloqueado, setDocumentoBloqueado] = useState(false);
   const [errorDocumento, setErrorDocumento] = useState(false);
 
+  const [renglonesVenta, setRenglonesVenta] = useState([]);
+  const [itemActual, setItemActual] = useState(ITEM_ACTUAL_INICIAL);
   const [busquedaProducto, setBusquedaProducto] = useState("");
   const [mostrarSugerenciasProducto, setMostrarSugerenciasProducto] = useState(false);
 
@@ -278,7 +282,7 @@ export default function CXCPage() {
   const deudaTotalBs = deudaTotalUsd * tasaBcv;
   const cantidadFacturasPendientes = facturasAdeudadasCliente.length;
 
-  const productoSeleccionado = productosInventario.find(p => p.id === formVenta.productoId) || null;
+  const productoSeleccionado = productosInventario.find(p => p.id === itemActual.productoId) || null;
   const esGastronomiaConVariantes = productoSeleccionado?.nicho === "Gastronomía & Heladería" && (productoSeleccionado.variantes || []).length > 0;
 
   const productosFiltradosCombo = (busquedaProducto
@@ -291,59 +295,129 @@ export default function CXCPage() {
   ).slice(0, 8);
 
   const handleSeleccionarProducto = (prod) => {
-    const cant = Number(formVenta.cantidad) || 1;
-    setFormVenta(prev => ({
-      ...prev,
-      productoId: prod.id,
-      varianteNombre: "",
-      toppingsSeleccionadosIds: [],
-      precioUnitario: prod.price,
-      montoTotal: prod.price * cant
-    }));
+    setItemActual({ productoId: prod.id, varianteNombre: "", toppingsSeleccionadosIds: [], cantidad: 1 });
     setBusquedaProducto(`${prod.code} - ${prod.name}`);
     setMostrarSugerenciasProducto(false);
   };
 
-  const handleBusquedaProductoKeyDown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const match = productosInventario.find(p => p.barcode && p.barcode === busquedaProducto.trim());
-      if (match) handleSeleccionarProducto(match);
-    }
+  // Añade (o fusiona con un renglón existente idéntico) un producto al ticket de venta
+  const agregarProductoAlTicket = (producto, varianteNombre, toppingsSeleccionados, cantidad) => {
+    const toppingsKey = toppingsSeleccionados.map(t => t.id).sort().join(",");
+    const precioUnitario = producto.price + toppingsSeleccionados.reduce((acc, t) => acc + (Number(t.precioExtra) || 0), 0);
+
+    setRenglonesVenta(prev => {
+      const idxExistente = prev.findIndex(r =>
+        r.productoId === producto.id &&
+        (r.variante || "") === (varianteNombre || "") &&
+        r.toppings.map(t => t.id).sort().join(",") === toppingsKey
+      );
+
+      if (idxExistente >= 0) {
+        return prev.map((r, i) => {
+          if (i !== idxExistente) return r;
+          const nuevaCantidad = r.cantidad + cantidad;
+          return { ...r, cantidad: nuevaCantidad, subtotal: r.precioUnitario * nuevaCantidad };
+        });
+      }
+
+      const nuevoRenglon = {
+        tempId: `tmp_${Date.now()}_${prev.length}`,
+        productoId: producto.id,
+        codigo: producto.code,
+        nombre: producto.name,
+        variante: varianteNombre || "",
+        toppings: toppingsSeleccionados,
+        cantidad,
+        precioUnitario,
+        subtotal: precioUnitario * cantidad,
+      };
+      return [...prev, nuevoRenglon];
+    });
   };
 
-  // Suma de recargos de los toppings actualmente seleccionados
+  const handleAgregarAlTicket = () => {
+    if (!itemActual.productoId || !productoSeleccionado) {
+      alert("Selecciona un producto del catálogo.");
+      return;
+    }
+    if (esGastronomiaConVariantes && !itemActual.varianteNombre) {
+      alert("Selecciona el sabor o variante.");
+      return;
+    }
+    const cantidad = Number(itemActual.cantidad) || 1;
+    if (cantidad <= 0) {
+      alert("Indica una cantidad válida.");
+      return;
+    }
+
+    const toppingsSeleccionados = (productoSeleccionado.toppings || [])
+      .filter(t => itemActual.toppingsSeleccionadosIds.includes(t.id))
+      .map(t => ({ id: t.id, nombre: t.nombre, precioExtra: Number(t.precioExtra) || 0 }));
+
+    agregarProductoAlTicket(productoSeleccionado, itemActual.varianteNombre, toppingsSeleccionados, cantidad);
+
+    setItemActual(ITEM_ACTUAL_INICIAL);
+    setBusquedaProducto("");
+  };
+
+  // Enter tras escanear código de barras: si el producto no exige variante, se agrega 1 unidad directo al ticket
+  const handleBusquedaProductoKeyDown = (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const match = productosInventario.find(p => p.barcode && p.barcode === busquedaProducto.trim());
+    if (!match) return;
+
+    const requiereVariante = match.nicho === "Gastronomía & Heladería" && (match.variantes || []).length > 0;
+    if (requiereVariante) {
+      handleSeleccionarProducto(match);
+      return;
+    }
+
+    agregarProductoAlTicket(match, "", [], 1);
+    setBusquedaProducto("");
+    setItemActual(ITEM_ACTUAL_INICIAL);
+  };
+
+  // Suma de recargos de los toppings actualmente seleccionados para el ítem en configuración
   const sumaToppingsSeleccionados = (productoSeleccionado?.toppings || [])
-    .filter(t => formVenta.toppingsSeleccionadosIds.includes(t.id))
+    .filter(t => itemActual.toppingsSeleccionadosIds.includes(t.id))
     .reduce((acc, t) => acc + (Number(t.precioExtra) || 0), 0);
 
-  // Recalcular total cuando cambia la cantidad: (precioBase + toppings) * cantidad
-  const handleCambiarCantidad = (cant) => {
-    const c = Number(cant) || 1;
-    setFormVenta(prev => ({
-      ...prev,
-      cantidad: c,
-      montoTotal: (prev.precioUnitario + sumaToppingsSeleccionados) * c
-    }));
-  };
+  const precioUnitarioActual = (productoSeleccionado?.price || 0) + sumaToppingsSeleccionados;
+  const subtotalActual = precioUnitarioActual * (Number(itemActual.cantidad) || 1);
 
-  // Alterna un topping y recalcula el total: (precioBase + sumaToppingsSeleccionados) * cantidad
   const handleToggleTopping = (topping) => {
-    setFormVenta(prev => {
+    setItemActual(prev => {
       const yaSeleccionado = prev.toppingsSeleccionadosIds.includes(topping.id);
       const nuevosIds = yaSeleccionado
         ? prev.toppingsSeleccionadosIds.filter(id => id !== topping.id)
         : [...prev.toppingsSeleccionadosIds, topping.id];
-      const nuevaSuma = (productoSeleccionado?.toppings || [])
-        .filter(t => nuevosIds.includes(t.id))
-        .reduce((acc, t) => acc + (Number(t.precioExtra) || 0), 0);
-      return {
-        ...prev,
-        toppingsSeleccionadosIds: nuevosIds,
-        montoTotal: (prev.precioUnitario + nuevaSuma) * prev.cantidad,
-      };
+      return { ...prev, toppingsSeleccionadosIds: nuevosIds };
     });
   };
+
+  const handleActualizarCantidadRenglon = (tempId, nuevaCantidad) => {
+    const cant = Math.max(1, Number(nuevaCantidad) || 1);
+    setRenglonesVenta(prev => prev.map(r => r.tempId === tempId ? { ...r, cantidad: cant, subtotal: r.precioUnitario * cant } : r));
+  };
+
+  const handleIncrementarRenglon = (tempId) => {
+    setRenglonesVenta(prev => prev.map(r => r.tempId === tempId ? { ...r, cantidad: r.cantidad + 1, subtotal: r.precioUnitario * (r.cantidad + 1) } : r));
+  };
+
+  const handleDecrementarRenglon = (tempId) => {
+    setRenglonesVenta(prev => prev.map(r => {
+      if (r.tempId !== tempId) return r;
+      const nuevaCantidad = Math.max(1, r.cantidad - 1);
+      return { ...r, cantidad: nuevaCantidad, subtotal: r.precioUnitario * nuevaCantidad };
+    }));
+  };
+
+  const handleEliminarRenglon = (tempId) => {
+    setRenglonesVenta(prev => prev.filter(r => r.tempId !== tempId));
+  };
+
+  const totalFacturaUsd = renglonesVenta.reduce((acc, r) => acc + r.subtotal, 0);
 
   const montoAbonadoUsd = formVenta.monedaAbono === "ves"
     ? (Number(formVenta.montoAbonadoInput) || 0) / (tasaBcv || 1)
@@ -359,8 +433,8 @@ export default function CXCPage() {
   // Guardar Venta y registrar cuenta por cobrar
   const handleCrearVenta = (e) => {
     e.preventDefault();
-    if (!formVenta.cliente || formVenta.montoTotal <= 0) {
-      alert("Indica el cliente y un monto válido.");
+    if (!formVenta.cliente || renglonesVenta.length === 0) {
+      alert("Indica el cliente y agrega al menos un producto al ticket.");
       return;
     }
 
@@ -372,7 +446,7 @@ export default function CXCPage() {
     setErrorDocumento(false);
 
     const esContado = formVenta.condicionVenta === "CONTADO";
-    const abonado = esContado ? formVenta.montoTotal : montoAbonadoUsd;
+    const abonado = esContado ? totalFacturaUsd : montoAbonadoUsd;
 
     if (abonado > 0 && requiereDatosTransferenciaVenta) {
       const ref = formVenta.referencia.trim();
@@ -387,13 +461,13 @@ export default function CXCPage() {
     }
 
     const documentoFinal = normalizarDocumento(`${formVenta.tipoDocumento}${formVenta.numeroDocumento}`);
-    const saldoPendiente = Math.max(0, formVenta.montoTotal - abonado);
+    const saldoPendiente = Math.max(0, totalFacturaUsd - abonado);
     const estado = saldoPendiente === 0 ? "PAGADO" : abonado > 0 ? "PARCIAL" : "PENDIENTE";
 
     const historialAbonos = abonado > 0 ? [{
       fecha: new Date().toLocaleString("es-VE"),
       moneda: esContado ? "usd" : formVenta.monedaAbono,
-      montoOriginal: esContado ? formVenta.montoTotal : (Number(formVenta.montoAbonadoInput) || 0),
+      montoOriginal: esContado ? totalFacturaUsd : (Number(formVenta.montoAbonadoInput) || 0),
       tasaBcv,
       montoUsd: abonado,
       metodoPago: formVenta.metodoPago,
@@ -403,11 +477,6 @@ export default function CXCPage() {
       titular: requiereDatosTransferenciaVenta ? formVenta.titular : "",
     }] : [];
 
-    // Toppings elegidos para esta línea de venta, formateados para el desglose e historial
-    const extrasSeleccionados = (productoSeleccionado?.toppings || [])
-      .filter(t => formVenta.toppingsSeleccionadosIds.includes(t.id))
-      .map(t => Number(t.precioExtra) > 0 ? `${t.nombre} (+$${Number(t.precioExtra).toFixed(2)})` : t.nombre);
-
     const nuevaCuenta = {
       // eslint-disable-next-line react-hooks/purity -- id generado en un manejador de evento (submit), no durante el render
       id: `FAC-${Date.now().toString().slice(-6)}`,
@@ -416,36 +485,33 @@ export default function CXCPage() {
       documento: documentoFinal || "S/D",
       paisCodigo: formVenta.paisCodigo,
       telefono: formVenta.telefono || "",
-      productoNombre: productoSeleccionado
-        ? `${productoSeleccionado.name}${formVenta.varianteNombre ? ` (${formVenta.varianteNombre})` : ""}`
-        : "Venta General",
-      precioBaseUnitario: formVenta.precioUnitario,
-      extras: extrasSeleccionados,
-      cantidad: formVenta.cantidad,
-      total: formVenta.montoTotal,
+      renglones: renglonesVenta,
+      cantidad: renglonesVenta.reduce((acc, r) => acc + r.cantidad, 0),
+      total: totalFacturaUsd,
       abonado,
       saldo: saldoPendiente,
       estado,
       historialAbonos,
     };
 
-    // Descontar inventario (con soporte de variantes/sabores)
-    if (formVenta.productoId) {
-      const actualizados = productosInventario.map(p => {
-        if (p.id !== formVenta.productoId) return p;
-        if (esGastronomiaConVariantes && formVenta.varianteNombre) {
+    // Descontar inventario de CADA renglón del ticket (con soporte de variantes/sabores)
+    let productosActualizados = [...productosInventario];
+    renglonesVenta.forEach(r => {
+      productosActualizados = productosActualizados.map(p => {
+        if (p.id !== r.productoId) return p;
+        if (r.variante && (p.variantes || []).length > 0) {
           const nuevasVariantes = (p.variantes || []).map(v =>
-            v.nombre === formVenta.varianteNombre
-              ? { ...v, stock: Math.max(0, (Number(v.stock) || 0) - formVenta.cantidad) }
+            v.nombre === r.variante
+              ? { ...v, stock: Math.max(0, (Number(v.stock) || 0) - r.cantidad) }
               : v
           );
           const nuevoStock = nuevasVariantes.reduce((acc, v) => acc + (Number(v.stock) || 0), 0);
           return { ...p, variantes: nuevasVariantes, stock: nuevoStock };
         }
-        return { ...p, stock: Math.max(0, p.stock - formVenta.cantidad) };
+        return { ...p, stock: Math.max(0, p.stock - r.cantidad) };
       });
-      actualizarProductosInventario(actualizados);
-    }
+    });
+    actualizarProductosInventario(productosActualizados);
 
     // Escudo anti-duplicados: upsert por cédula/RIF normalizada (clave única)
     const clienteExistente = documentoFinal
@@ -479,6 +545,8 @@ export default function CXCPage() {
     actualizarCuentas([nuevaCuenta, ...cuentas]);
     setModalVentaAbierto(false);
     setFormVenta(FORM_VENTA_INICIAL);
+    setRenglonesVenta([]);
+    setItemActual(ITEM_ACTUAL_INICIAL);
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
@@ -488,6 +556,8 @@ export default function CXCPage() {
   const handleCerrarModalVenta = () => {
     setModalVentaAbierto(false);
     setFormVenta(FORM_VENTA_INICIAL);
+    setRenglonesVenta([]);
+    setItemActual(ITEM_ACTUAL_INICIAL);
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
@@ -566,9 +636,21 @@ export default function CXCPage() {
   const handleEnviarWhatsapp = (cuenta) => {
     const numero = `${(cuenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(cuenta.telefono)}`;
     const saldoBs = formatearBs(cuenta.saldo, tasaBcv);
-    const lineaExtras = cuenta.extras && cuenta.extras.length > 0 ? ` [Extras: ${cuenta.extras.join(", ")}]` : "";
-    const lineaProducto = `• ${cuenta.cantidad}x ${cuenta.productoNombre} ($${(cuenta.precioBaseUnitario || 0).toFixed(2)})${lineaExtras}`;
-    const mensaje = `Estimado(a) *${cuenta.cliente}*, le saludamos de *D'una*. Le compartimos el estado de su cuenta:\n${lineaProducto}\nFactura: *${cuenta.id}* | Total: *$${cuenta.total.toFixed(2)}* | Abonado: *$${cuenta.abonado.toFixed(2)}* | Saldo pendiente: *$${cuenta.saldo.toFixed(2)} USD* (*Bs. ${saldoBs}* a Tasa BCV: Bs. ${tasaBcv}). Quedamos atentos a su comprobante.`;
+
+    let lineasProductos;
+    if (cuenta.renglones && cuenta.renglones.length > 0) {
+      lineasProductos = cuenta.renglones.map(r => {
+        const variantePart = r.variante ? ` (${r.variante})` : "";
+        const extrasPart = r.toppings && r.toppings.length > 0 ? ` [Extras: ${r.toppings.map(t => t.nombre).join(", ")}]` : "";
+        return `• ${r.cantidad}x ${r.nombre}${variantePart}${extrasPart} - $${r.subtotal.toFixed(2)}`;
+      }).join("\n");
+    } else {
+      // Compatibilidad con facturas de un solo producto registradas antes del ticket multi-renglón
+      const lineaExtras = cuenta.extras && cuenta.extras.length > 0 ? ` [Extras: ${cuenta.extras.join(", ")}]` : "";
+      lineasProductos = `• ${cuenta.cantidad}x ${cuenta.productoNombre} ($${(cuenta.precioBaseUnitario || 0).toFixed(2)})${lineaExtras}`;
+    }
+
+    const mensaje = `Estimado(a) *${cuenta.cliente}*, le saludamos de *D'una*. Le compartimos el estado de su cuenta:\n${lineasProductos}\nFactura: *${cuenta.id}* | Total: *$${cuenta.total.toFixed(2)}* | Abonado: *$${cuenta.abonado.toFixed(2)}* | Saldo pendiente: *$${cuenta.saldo.toFixed(2)} USD* (*Bs. ${saldoBs}* a Tasa BCV: Bs. ${tasaBcv}). Quedamos atentos a su comprobante.`;
     window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`, "_blank");
   };
 
@@ -742,7 +824,20 @@ export default function CXCPage() {
                         <span className="text-[11px] text-slate-400">{c.documento} • {c.telefono ? `${c.paisCodigo || ""} ${c.telefono}` : "Sin teléfono"}</span>
                       </td>
                       <td className="p-4 text-slate-600">
-                        {c.productoNombre} (x{c.cantidad})
+                        {c.renglones && c.renglones.length > 0 ? (
+                          <>
+                            <span className="font-semibold text-slate-700 block">
+                              {c.renglones[0].nombre}{c.renglones[0].variante ? ` (${c.renglones[0].variante})` : ""} x{c.renglones[0].cantidad}
+                            </span>
+                            {c.renglones.length > 1 && (
+                              <span className="text-[11px] text-slate-400">
+                                +{c.renglones.length - 1} artículo{c.renglones.length - 1 === 1 ? "" : "s"} más
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>{c.productoNombre} (x{c.cantidad})</>
+                        )}
                       </td>
                       <td className="p-4 font-black text-slate-900">
                         {formatearMonto(c.total)}
@@ -799,7 +894,7 @@ export default function CXCPage() {
       {/* Modal Nueva Factura */}
       {modalVentaAbierto && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto">
 
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
@@ -962,7 +1057,7 @@ export default function CXCPage() {
               </div>
 
               <div className="relative">
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">Producto del Catálogo (buscar o escanear código de barras)</label>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">Buscar Producto (nombre, SKU o escanear código de barras)</label>
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                   <input
@@ -999,76 +1094,151 @@ export default function CXCPage() {
                 )}
               </div>
 
-              {esGastronomiaConVariantes && (
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Sabor / Variante *</label>
-                  <select
-                    required
-                    value={formVenta.varianteNombre}
-                    onChange={(e) => setFormVenta(prev => ({ ...prev, varianteNombre: e.target.value }))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
-                  >
-                    <option value="">Seleccionar sabor...</option>
-                    {productoSeleccionado.variantes.map(v => (
-                      <option key={v.nombre} value={v.nombre}>{v.nombre} (Stock: {v.stock})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              {productoSeleccionado && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-3">
+                  <div className="text-[11px] font-bold text-slate-700">
+                    Configurando: <span className="text-[#FE6712]">{productoSeleccionado.name}</span>
+                  </div>
 
-              {productoSeleccionado?.toppings?.length > 0 && (
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Toppings / Modificadores</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {productoSeleccionado.toppings.map(t => {
-                      const activo = formVenta.toppingsSeleccionadosIds.includes(t.id);
-                      return (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => handleToggleTopping(t)}
-                          className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition ${
-                            activo
-                              ? "bg-[#FE6712] text-white border-[#FE6712] shadow-sm"
-                              : "bg-white text-slate-600 border-slate-200 hover:border-[#FE6712] hover:text-[#FE6712]"
-                          }`}
-                        >
-                          {t.nombre} {Number(t.precioExtra) > 0 ? `(+$${Number(t.precioExtra).toFixed(2)})` : "(Gratis)"}
-                        </button>
-                      );
-                    })}
+                  {esGastronomiaConVariantes && (
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Sabor / Variante *</label>
+                      <select
+                        required
+                        value={itemActual.varianteNombre}
+                        onChange={(e) => setItemActual(prev => ({ ...prev, varianteNombre: e.target.value }))}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                      >
+                        <option value="">Seleccionar sabor...</option>
+                        {productoSeleccionado.variantes.map(v => (
+                          <option key={v.nombre} value={v.nombre}>{v.nombre} (Stock: {v.stock})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {productoSeleccionado.toppings?.length > 0 && (
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1.5">Toppings / Modificadores</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {productoSeleccionado.toppings.map(t => {
+                          const activo = itemActual.toppingsSeleccionadosIds.includes(t.id);
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => handleToggleTopping(t)}
+                              className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition ${
+                                activo
+                                  ? "bg-[#FE6712] text-white border-[#FE6712] shadow-sm"
+                                  : "bg-white text-slate-600 border-slate-200 hover:border-[#FE6712] hover:text-[#FE6712]"
+                              }`}
+                            >
+                              {t.nombre} {Number(t.precioExtra) > 0 ? `(+$${Number(t.precioExtra).toFixed(2)})` : "(Gratis)"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-3 items-end">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Cantidad</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={itemActual.cantidad}
+                        onChange={(e) => setItemActual(prev => ({ ...prev, cantidad: Number(e.target.value) || 1 }))}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 block mb-1">Subtotal</span>
+                      <span className="block px-3 py-2 text-xs font-black text-slate-900">${subtotalActual.toFixed(2)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAgregarAlTicket}
+                      className="px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Agregar al Ticket
+                    </button>
                   </div>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Cantidad</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={formVenta.cantidad}
-                    onChange={(e) => handleCambiarCantidad(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FE6712]"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Total ($)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={formVenta.montoTotal}
-                    onChange={(e) => setFormVenta({ ...formVenta, montoTotal: Number(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FE6712]"
-                  />
-                </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Ticket de Venta</label>
+                {renglonesVenta.length === 0 ? (
+                  <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center">
+                    <p className="text-[11px] text-slate-400">Escanee un código de barras o busque un producto para iniciar el ticket.</p>
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                        <tr>
+                          <th className="p-2.5">Producto</th>
+                          <th className="p-2.5">Cant.</th>
+                          <th className="p-2.5">P. Unit.</th>
+                          <th className="p-2.5">Subtotal</th>
+                          <th className="p-2.5 text-right">—</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {renglonesVenta.map(r => (
+                          <tr key={r.tempId}>
+                            <td className="p-2.5">
+                              <span className="font-bold text-slate-800 block">{r.nombre}</span>
+                              {(r.variante || r.toppings.length > 0) && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {r.variante && (
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px] font-bold">{r.variante}</span>
+                                  )}
+                                  {r.toppings.map(t => (
+                                    <span key={t.id} className="px-1.5 py-0.5 rounded bg-orange-50 text-[#FE6712] text-[9px] font-bold">{t.nombre}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-2.5">
+                              <div className="flex items-center gap-1">
+                                <button type="button" onClick={() => handleDecrementarRenglon(r.tempId)} className="w-5 h-5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold">−</button>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={r.cantidad}
+                                  onChange={(e) => handleActualizarCantidadRenglon(r.tempId, e.target.value)}
+                                  className="w-10 text-center px-1 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold"
+                                />
+                                <button type="button" onClick={() => handleIncrementarRenglon(r.tempId)} className="w-5 h-5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold">+</button>
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-slate-600">${r.precioUnitario.toFixed(2)}</td>
+                            <td className="p-2.5 font-black text-slate-900">${r.subtotal.toFixed(2)}</td>
+                            <td className="p-2.5 text-right">
+                              <button type="button" onClick={() => handleEliminarRenglon(r.tempId)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="flex items-center justify-end gap-3 px-3 py-2.5 bg-slate-50 border-t border-slate-200">
+                      <span className="text-[11px] font-bold text-slate-500">Total Factura</span>
+                      <span className="text-base font-black text-slate-900">${totalFacturaUsd.toFixed(2)}</span>
+                      <span className="text-[11px] font-bold text-emerald-600">Bs. {formatearBs(totalFacturaUsd, tasaBcv)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {formVenta.condicionVenta === "CONTADO" ? (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
                   <p className="text-[11px] font-bold text-emerald-700">Venta de Contado: se cobra el 100% del total al momento, sin dejar saldo.</p>
-                  <p className="text-lg font-black text-emerald-800 mt-1">${formVenta.montoTotal.toFixed(2)}</p>
+                  <p className="text-lg font-black text-emerald-800 mt-1">${totalFacturaUsd.toFixed(2)}</p>
                 </div>
               ) : (
                 <div>
@@ -1128,8 +1298,14 @@ export default function CXCPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={formVenta.numeroDocumento.trim().length < 5}
-                  title={formVenta.numeroDocumento.trim().length < 5 ? "La Cédula o RIF es obligatoria para emitir la factura" : undefined}
+                  disabled={formVenta.numeroDocumento.trim().length < 5 || renglonesVenta.length === 0}
+                  title={
+                    formVenta.numeroDocumento.trim().length < 5
+                      ? "La Cédula o RIF es obligatoria para emitir la factura"
+                      : renglonesVenta.length === 0
+                      ? "Agrega al menos un producto al ticket"
+                      : undefined
+                  }
                   className="px-5 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-orange-500/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#FE6712]"
                 >
                   <Check className="w-4 h-4" /> Registrar Factura
