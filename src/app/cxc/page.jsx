@@ -3,7 +3,8 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Search, Plus, Check, X,
-  Receipt, Trash2, MessageCircle, ShieldCheck, Wallet, Copy, Settings, Smartphone
+  Receipt, Trash2, MessageCircle, ShieldCheck, Wallet, Copy, Settings, Smartphone,
+  AlertTriangle, PauseCircle, History
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser } from "@/context/UserContext";
@@ -152,6 +153,11 @@ export default function CXCPage() {
   const [tokenPagoActivo, setTokenPagoActivo] = useState(null);
   const [modalComprobanteAbierto, setModalComprobanteAbierto] = useState(false);
 
+  const [draftDetectado, setDraftDetectado] = useState(null);
+  const [ventasEnEspera, setVentasEnEspera] = useState([]);
+  const [modalEsperaAbierto, setModalEsperaAbierto] = useState(false);
+  const [avisoClienteEnEspera, setAvisoClienteEnEspera] = useState(null);
+
   // Cargar datos locales
   useEffect(() => {
     const guardadas = localStorage.getItem("duna_cxc_records");
@@ -214,7 +220,47 @@ export default function CXCPage() {
         console.error(e);
       }
     }
+
+    const borradorGuardado = localStorage.getItem("duna_pos_draft");
+    if (borradorGuardado) {
+      try {
+        setDraftDetectado(JSON.parse(borradorGuardado));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    const esperaGuardadas = localStorage.getItem("duna_ventas_espera");
+    if (esperaGuardadas) {
+      try {
+        setVentasEnEspera(JSON.parse(esperaGuardadas));
+      } catch (e) {
+        console.error(e);
+      }
+    }
   }, []);
+
+  // Auto-guardado continuo del ticket en curso (crash recovery): solo escribe en localStorage, sin setState
+  useEffect(() => {
+    if (!modalVentaAbierto) return;
+    if (!formVenta.cliente && renglonesVenta.length === 0) return;
+    const borrador = {
+      cliente: {
+        nombre: formVenta.cliente,
+        tipoDocumento: formVenta.tipoDocumento,
+        numeroDocumento: formVenta.numeroDocumento,
+        paisCodigo: formVenta.paisCodigo,
+        telefono: formVenta.telefono,
+        direccion: formVenta.direccion,
+      },
+      renglonesVenta,
+      itemActual,
+      condicionVenta: formVenta.condicionVenta,
+      abonoInicial: formVenta.montoAbonadoInput,
+      guardadoEn: new Date().toLocaleString("es-VE"),
+    };
+    localStorage.setItem("duna_pos_draft", JSON.stringify(borrador));
+  }, [modalVentaAbierto, formVenta, renglonesVenta, itemActual]);
 
   const actualizarCuentas = (nuevas) => {
     setCuentas(nuevas);
@@ -337,12 +383,19 @@ export default function CXCPage() {
     }));
     setErrorDocumento(false);
     if (match) setDocumentoBloqueado(true);
+
+    // Detección reactiva: ¿esta cédula ya tiene un ticket pausado en espera?
+    const ventaEnEsperaCoincidente = soloDigitos.length >= 5
+      ? ventasEnEspera.find(v => extraerDigitos(v.cliente?.numeroDocumento) === soloDigitos)
+      : null;
+    setAvisoClienteEnEspera(ventaEnEsperaCoincidente || null);
   };
 
   // Cédula/RIF es la clave única: se libera solo con una acción explícita del usuario
   const handleDesbloquearDocumento = () => {
     setDocumentoBloqueado(false);
     setFormVenta(prev => ({ ...prev, tipoDocumento: "V-", numeroDocumento: "", cliente: "", paisCodigo: "+58", telefono: "", direccion: "", condicionVenta: "CREDITO" }));
+    setAvisoClienteEnEspera(null);
   };
 
   // Auditoría reactiva de deuda: facturas pendientes del cliente detectado por cédula/RIF
@@ -693,6 +746,10 @@ export default function CXCPage() {
     setErrorDocumento(false);
     setModalAuditoriaAbierto(false);
     setTokenPagoActivo(null);
+    setAvisoClienteEnEspera(null);
+    // Venta formalizada: el borrador de recuperación ya no aplica
+    localStorage.removeItem("duna_pos_draft");
+    setDraftDetectado(null);
   };
 
   const handleCerrarModalVenta = () => {
@@ -705,6 +762,108 @@ export default function CXCPage() {
     setErrorDocumento(false);
     setModalAuditoriaAbierto(false);
     setTokenPagoActivo(null);
+    setAvisoClienteEnEspera(null);
+  };
+
+  // --- Borrador de recuperación (crash recovery) ---
+
+  const totalBorrador = (draftDetectado?.renglonesVenta || []).reduce((acc, r) => acc + r.subtotal, 0);
+
+  const handleRetomarBorrador = () => {
+    if (!draftDetectado) return;
+    const c = draftDetectado.cliente || {};
+    setFormVenta(prev => ({
+      ...FORM_VENTA_INICIAL,
+      bancoReceptor: prev.bancoReceptor,
+      cliente: c.nombre || "",
+      tipoDocumento: c.tipoDocumento || "V-",
+      numeroDocumento: c.numeroDocumento || "",
+      paisCodigo: c.paisCodigo || "+58",
+      telefono: c.telefono || "",
+      direccion: c.direccion || "",
+      condicionVenta: draftDetectado.condicionVenta || "CREDITO",
+      montoAbonadoInput: draftDetectado.abonoInicial || "",
+    }));
+    setRenglonesVenta(draftDetectado.renglonesVenta || []);
+    setItemActual(draftDetectado.itemActual || ITEM_ACTUAL_INICIAL);
+    if (c.numeroDocumento) setDocumentoBloqueado(true);
+    setModalVentaAbierto(true);
+    setDraftDetectado(null);
+  };
+
+  const handleDescartarBorrador = () => {
+    setDraftDetectado(null);
+    localStorage.removeItem("duna_pos_draft");
+  };
+
+  // --- Ventas en Espera (Parked Sales) ---
+
+  const actualizarVentasEnEspera = (nuevas) => {
+    setVentasEnEspera(nuevas);
+    localStorage.setItem("duna_ventas_espera", JSON.stringify(nuevas));
+  };
+
+  const handlePonerEnEspera = () => {
+    if (renglonesVenta.length === 0) return;
+    const ventaEnEspera = {
+      // eslint-disable-next-line react-hooks/purity -- id generado en un manejador de evento (click), no durante el render
+      id: `espera_${Date.now()}`,
+      fechaHora: new Date().toLocaleString("es-VE"),
+      cliente: {
+        nombre: formVenta.cliente,
+        tipoDocumento: formVenta.tipoDocumento,
+        numeroDocumento: formVenta.numeroDocumento,
+        paisCodigo: formVenta.paisCodigo,
+        telefono: formVenta.telefono,
+        direccion: formVenta.direccion,
+      },
+      renglonesVenta,
+      condicionVenta: formVenta.condicionVenta,
+      total: totalFacturaUsd,
+    };
+    actualizarVentasEnEspera([ventaEnEspera, ...ventasEnEspera]);
+
+    setModalVentaAbierto(false);
+    setFormVenta({ ...FORM_VENTA_INICIAL, bancoReceptor: configPagoMovil.bancoReceptor || "" });
+    setRenglonesVenta([]);
+    setItemActual(ITEM_ACTUAL_INICIAL);
+    setBusquedaProducto("");
+    setDocumentoBloqueado(false);
+    setErrorDocumento(false);
+    setTokenPagoActivo(null);
+    setAvisoClienteEnEspera(null);
+    localStorage.removeItem("duna_pos_draft");
+    setDraftDetectado(null);
+
+    alert("Venta guardada en espera");
+  };
+
+  const handleRetomarVentaEnEspera = (venta) => {
+    const c = venta.cliente || {};
+    setFormVenta(prev => ({
+      ...FORM_VENTA_INICIAL,
+      bancoReceptor: prev.bancoReceptor,
+      cliente: c.nombre || "",
+      tipoDocumento: c.tipoDocumento || "V-",
+      numeroDocumento: c.numeroDocumento || "",
+      paisCodigo: c.paisCodigo || "+58",
+      telefono: c.telefono || "",
+      direccion: c.direccion || "",
+      condicionVenta: venta.condicionVenta || "CREDITO",
+    }));
+    setRenglonesVenta(venta.renglonesVenta || []);
+    setItemActual(ITEM_ACTUAL_INICIAL);
+    if (c.numeroDocumento) setDocumentoBloqueado(true);
+
+    actualizarVentasEnEspera(ventasEnEspera.filter(v => v.id !== venta.id));
+    setAvisoClienteEnEspera(null);
+    setModalEsperaAbierto(false);
+    setModalVentaAbierto(true);
+  };
+
+  const handleEliminarVentaEnEspera = (id) => {
+    if (!confirm("¿Eliminar esta venta en espera?")) return;
+    actualizarVentasEnEspera(ventasEnEspera.filter(v => v.id !== id));
   };
 
   // Modal dedicado de abonos posteriores
@@ -842,17 +1001,50 @@ export default function CXCPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => setModalVentaAbierto(true)}
-            className="px-4 py-2.5 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-2xl text-xs font-bold transition flex items-center gap-2 shadow-sm shadow-orange-500/20"
-          >
-            <Plus className="w-4 h-4" /> Nueva Venta / Factura
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setModalEsperaAbierto(true)}
+              disabled={ventasEnEspera.length === 0}
+              className="px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+            >
+              ⏸ En Espera ({ventasEnEspera.length})
+            </button>
+            <button
+              onClick={() => setModalVentaAbierto(true)}
+              className="px-4 py-2.5 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-2xl text-xs font-bold transition flex items-center gap-2 shadow-sm shadow-orange-500/20"
+            >
+              <Plus className="w-4 h-4" /> Nueva Venta / Factura
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 flex-1 w-full space-y-6">
+
+        {/* Banner de Recuperación de Borrador (crash recovery) */}
+        {draftDetectado && (
+          <div className="rounded-3xl border border-amber-300 bg-gradient-to-r from-amber-50 to-emerald-50 p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <p className="text-[12px] font-bold text-slate-700 min-w-0">
+                ⚠️ Se detectó una venta en curso no finalizada para{" "}
+                <span className="text-slate-900">{draftDetectado.cliente?.nombre || "Consumidor Final"}</span>
+                {" "}({(draftDetectado.renglonesVenta || []).length} ítem{(draftDetectado.renglonesVenta || []).length === 1 ? "" : "s"} - ${totalBorrador.toFixed(2)}).
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button type="button" onClick={handleRetomarBorrador} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition flex items-center gap-1.5">
+                🔄 Retomar Venta
+              </button>
+              <button type="button" onClick={handleDescartarBorrador} className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5">
+                🗑️ Descartar
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Turno de Caja */}
         <div className={`rounded-3xl border p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm ${
@@ -1155,6 +1347,19 @@ export default function CXCPage() {
                   ) : (
                     <span>✓ Al Día</span>
                   )}
+                </div>
+              )}
+
+              {avisoClienteEnEspera && (
+                <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-sky-700">
+                  <span>💡 Este cliente tiene un ticket en espera de ${avisoClienteEnEspera.total.toFixed(2)}. ¿Deseas retomarlo?</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRetomarVentaEnEspera(avisoClienteEnEspera)}
+                    className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-[10px] font-black transition shrink-0"
+                  >
+                    Sí, retomar
+                  </button>
                 </div>
               )}
 
@@ -1523,6 +1728,15 @@ export default function CXCPage() {
                   Cancelar
                 </button>
                 <button
+                  type="button"
+                  onClick={handlePonerEnEspera}
+                  disabled={renglonesVenta.length === 0}
+                  title={renglonesVenta.length === 0 ? "Agrega al menos un producto al ticket" : "Pausar esta venta y liberar el mostrador"}
+                  className="px-4 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <PauseCircle className="w-4 h-4" /> Poner en Espera
+                </button>
+                <button
                   type="submit"
                   disabled={formVenta.numeroDocumento.trim().length < 5 || renglonesVenta.length === 0 || referenciaVentaDuplicada}
                   title={
@@ -1861,6 +2075,86 @@ export default function CXCPage() {
             onClick={(e) => e.stopPropagation()}
             className="max-w-full max-h-full rounded-2xl shadow-2xl object-contain"
           />
+        </div>
+      )}
+
+      {/* Modal Ventas en Espera */}
+      {modalEsperaAbierto && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Ventas en Espera</h3>
+                <p className="text-xs text-slate-400">Tickets pausados listos para retomar en el mostrador</p>
+              </div>
+              <button onClick={() => setModalEsperaAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {ventasEnEspera.length === 0 ? (
+              <div className="text-center py-10">
+                <PauseCircle className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <p className="text-xs text-slate-400">No hay ventas en espera por el momento.</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                    <tr>
+                      <th className="p-3">Cliente</th>
+                      <th className="p-3">RIF</th>
+                      <th className="p-3">Ítems</th>
+                      <th className="p-3">Total</th>
+                      <th className="p-3">Pausada</th>
+                      <th className="p-3 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {ventasEnEspera.map((v) => (
+                      <tr key={v.id} className="hover:bg-slate-50/50 transition">
+                        <td className="p-3 font-bold text-slate-800">{v.cliente?.nombre || "Consumidor Final"}</td>
+                        <td className="p-3 text-slate-500">
+                          {v.cliente?.tipoDocumento || ""}{v.cliente?.numeroDocumento || "—"}
+                        </td>
+                        <td className="p-3 text-slate-600">{(v.renglonesVenta || []).length}</td>
+                        <td className="p-3 font-black text-slate-900">${v.total.toFixed(2)}</td>
+                        <td className="p-3 text-slate-500">
+                          <span className="inline-flex items-center gap-1">
+                            <History className="w-3 h-3" /> {v.fechaHora}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleRetomarVentaEnEspera(v)}
+                              className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg font-bold text-[10px] transition"
+                            >
+                              Retomar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleEliminarVentaEnEspera(v.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button type="button" onClick={() => setModalEsperaAbierto(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition">
+                Cerrar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

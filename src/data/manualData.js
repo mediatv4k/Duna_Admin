@@ -135,6 +135,26 @@ const manualData = [
     palabrasClave: ["link de pago", "autoservicio", "comprobante", "token", "pago movil", "validacion", "reporte de pago"],
   },
   {
+    id: "CXC_ESPERA_BORRADOR",
+    modulo: "CXC",
+    ruta: "/cxc",
+    titulo: "Ventas en Espera y Rescate de Borrador",
+    resumen: "Cómo pausar compras de clientes indecisos para seguir atendiendo la cola y recuperar ventas tras cortes de energía o cierres de ventana.",
+    pasos: [
+      "Mientras armas un ticket, el sistema lo guarda solo, en silencio, cada vez que agregas un producto o cambias un dato del cliente.",
+      "Si un cliente se va a pensar su compra, pulsa 'Poner en Espera' junto a Cancelar: el ticket se guarda con fecha/hora y el mostrador queda libre para el siguiente cliente.",
+      "Consulta la pastilla '⏸ En Espera (N)' en la cabecera de Ventas & CXC para ver, retomar o eliminar cualquier ticket pausado.",
+      "Si escribes la cédula de un cliente que ya tiene un ticket pausado, aparece un aviso para retomarlo con un clic en 'Sí, retomar'.",
+      "Si la página se recarga o se cierra por accidente con una venta a medio armar, al volver a entrar aparece un banner para 'Retomar Venta' o 'Descartar'.",
+    ],
+    tips: [
+      "El borrador automático se limpia solo en cuanto registras la factura formalmente, así la siguiente venta siempre arranca en blanco.",
+      "Poner una venta en espera también borra el borrador automático de esa venta, para no duplicar el mismo ticket en dos sitios.",
+      "Una venta en espera guarda cliente, renglones, condición y total; al retomarla solo falta revisar el pago y confirmar.",
+    ],
+    palabrasClave: ["ventas en espera", "parked sales", "borrador", "crash recovery", "recuperar venta", "pausar venta"],
+  },
+  {
     id: "control-contado-credito",
     modulo: "CXC",
     ruta: "/cxc",
