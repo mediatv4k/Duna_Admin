@@ -5,9 +5,11 @@ import * as XLSX from "xlsx";
 import {
   Boxes, Upload, Download, ArrowLeft, Search,
   Plus, Edit3, Trash2, X, Check, Camera,
-  Snowflake, IceCream2, Cpu, Pill, Scale, Layers as LayersIcon
+  Snowflake, IceCream2, Cpu, Pill, Scale, Layers as LayersIcon,
+  Cloud, FileJson
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
+import { useBusinessProfile } from "@/context/BusinessProfileContext";
 
 const NICHOS = [
   "General",
@@ -51,6 +53,7 @@ const FORM_INICIAL = {
   // Gastronomía & Heladería
   variantes: [],
   areaDespacho: "Cocina",
+  toppings: [],
   // Granel / Peso
   unidadMedida: "kg",
 };
@@ -81,8 +84,99 @@ function parseBooleano(val) {
   return s === "SI" || s === "SÍ" || s === "TRUE" || s === "1";
 }
 
+function serializarToppings(toppings) {
+  return (toppings || [])
+    .filter((t) => t.nombre)
+    .map((t) => `${t.nombre}:${Number(t.precioExtra) || 0}`)
+    .join(" | ");
+}
+
+// Lee TOPPINGS_MODIFICADORES tolerando "Nombre:Precio", "Nombre (+Precio)" o solo "Nombre"
+function parseToppings(str) {
+  if (!str) return [];
+  return String(str)
+    .split(/[|,]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s, idx) => {
+      let m = s.match(/^(.+?)\s*\(\s*\+?\s*\$?\s*([\d.,]+)\s*\)\s*$/);
+      if (m) {
+        return { id: `top_${Date.now()}_${idx}`, nombre: m[1].trim(), precioExtra: parseFloat(m[2].replace(",", ".")) || 0 };
+      }
+      m = s.match(/^(.+?)\s*:\s*\$?\s*([\d.,]+)\s*$/);
+      if (m) {
+        return { id: `top_${Date.now()}_${idx}`, nombre: m[1].trim(), precioExtra: parseFloat(m[2].replace(",", ".")) || 0 };
+      }
+      return { id: `top_${Date.now()}_${idx}`, nombre: s, precioExtra: 0 };
+    })
+    .filter((t) => t.nombre);
+}
+
+// Transforma un producto del inventario al esquema Marketplace Core v2 (AdonisJS)
+function buildMarketplaceProductPayload(producto) {
+  const metadataVariants = [];
+
+  if ((producto.variantes || []).length > 0) {
+    metadataVariants.push({
+      name: "Sabor / Presentación",
+      code: "FLAVOR",
+      selectType: "SINGLE",
+      pricingRole: "BASE",
+      min: 1,
+      max: 1,
+      items: producto.variantes.map((v, i) => ({
+        code: `VAR_${i + 1}`,
+        title: v.nombre,
+        price: Number(producto.price) || 0,
+        stock: Number(v.stock) || 0,
+      })),
+    });
+  }
+
+  if ((producto.toppings || []).length > 0) {
+    metadataVariants.push({
+      name: "Toppings y Agregados",
+      code: "TOPPINGS",
+      selectType: "MULTIPLE",
+      pricingRole: "ADDON",
+      min: 0,
+      max: producto.toppings.length,
+      items: producto.toppings.map((t, i) => ({
+        code: `TOP_${t.id || i + 1}`,
+        title: t.nombre,
+        price: Number(t.precioExtra) || 0,
+      })),
+    });
+  }
+
+  return {
+    id: producto.id,
+    code: producto.code,
+    name: producto.name,
+    image: producto.image,
+    description: producto.descripcion,
+    category: producto.categoria,
+    internalCategory: producto.subcategoria || "",
+    purchaseType: "UNIT",
+    version: 2,
+    storeManageStock: true,
+    stock: producto.stock,
+    price: producto.price,
+    metadata: {
+      price: {
+        basePrice: Number(producto.price) || 0,
+        promoPrice: producto.precioPromo ? Number(producto.precioPromo) : null,
+        infoPrice: Number(producto.price) || 0,
+      },
+      variants: metadataVariants,
+    },
+  };
+}
+
 export default function InventarioPage() {
   const { modoMoneda, tasaBcv } = useCurrency();
+  const { perfil } = useBusinessProfile();
+  const esPerfilSimple = perfil === "SIMPLE";
   const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -91,6 +185,9 @@ export default function InventarioPage() {
   const imageInputRef = useRef(null);
 
   const [formData, setFormData] = useState(FORM_INICIAL);
+  const [nuevoTopping, setNuevoTopping] = useState({ nombre: "", precioExtra: "" });
+  const [modalJsonAbierto, setModalJsonAbierto] = useState(false);
+  const [productoJsonActual, setProductoJsonActual] = useState(null);
 
   useEffect(() => {
     const guardados = localStorage.getItem("duna_inventario_prods");
@@ -172,6 +269,7 @@ export default function InventarioPage() {
               mesesGarantia: Number(row.MESES_GARANTIA) || 0,
               variantes,
               areaDespacho: row.AREA_DESPACHO || "Cocina",
+              toppings: parseToppings(row.TOPPINGS_MODIFICADORES),
               unidadMedida: row.UNIDAD_MEDIDA || "kg",
             };
           });
@@ -226,6 +324,7 @@ export default function InventarioPage() {
       MESES_GARANTIA: p.mesesGarantia || 0,
       SABORES: serializarSabores(p.variantes),
       AREA_DESPACHO: p.areaDespacho || "",
+      TOPPINGS_MODIFICADORES: serializarToppings(p.toppings),
       UNIDAD_MEDIDA: p.unidadMedida || "",
     })) : [
       {
@@ -267,6 +366,7 @@ export default function InventarioPage() {
         MESES_GARANTIA: 0,
         SABORES: "",
         AREA_DESPACHO: "",
+        TOPPINGS_MODIFICADORES: "",
         UNIDAD_MEDIDA: "",
       }
     ];
@@ -275,6 +375,25 @@ export default function InventarioPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Productos");
     XLSX.writeFile(wb, "Productos_Duna_Admin.xlsx");
+  };
+
+  const handleExportMarketplace = () => {
+    const payload = productos.map(buildMarketplaceProductPayload);
+    const fecha = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `catalogo_marketplace_v2_${fecha}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const abrirModalJson = (item) => {
+    setProductoJsonActual(item);
+    setModalJsonAbierto(true);
   };
 
   const handleImageFileChange = (e) => {
@@ -297,6 +416,7 @@ export default function InventarioPage() {
       ...FORM_INICIAL,
       code: `P00${productos.length + 1}`,
     });
+    setNuevoTopping({ nombre: "", precioExtra: "" });
     setModalAbierto(true);
   };
 
@@ -306,7 +426,9 @@ export default function InventarioPage() {
       ...FORM_INICIAL,
       ...prod,
       variantes: prod.variantes || [],
+      toppings: prod.toppings || [],
     });
+    setNuevoTopping({ nombre: "", precioExtra: "" });
     setModalAbierto(true);
   };
 
@@ -330,6 +452,25 @@ export default function InventarioPage() {
 
   const handleEliminarVariante = (idx) => {
     setFormData(prev => ({ ...prev, variantes: prev.variantes.filter((_, i) => i !== idx) }));
+  };
+
+  const mostrarToppings = formData.nicho === "Gastronomía & Heladería" || formData.nicho === "General";
+
+  const handleAgregarTopping = () => {
+    if (!nuevoTopping.nombre.trim()) return;
+    setFormData(prev => ({
+      ...prev,
+      toppings: [...prev.toppings, {
+        id: `top_${Date.now()}`,
+        nombre: nuevoTopping.nombre.trim(),
+        precioExtra: Number(nuevoTopping.precioExtra) || 0,
+      }],
+    }));
+    setNuevoTopping({ nombre: "", precioExtra: "" });
+  };
+
+  const handleEliminarTopping = (id) => {
+    setFormData(prev => ({ ...prev, toppings: prev.toppings.filter(t => t.id !== id) }));
   };
 
   const handleGuardarProducto = (e) => {
@@ -371,6 +512,7 @@ export default function InventarioPage() {
       mesesGarantia: Number(formData.mesesGarantia) || 0,
       variantes: esGastronomia ? formData.variantes.filter(v => v.nombre) : [],
       areaDespacho: formData.areaDespacho,
+      toppings: mostrarToppings ? formData.toppings.filter(t => t.nombre) : [],
       unidadMedida: formData.unidadMedida,
     };
 
@@ -454,6 +596,13 @@ export default function InventarioPage() {
             >
               <Download className="w-4 h-4 text-slate-500" />
               <span className="hidden md:inline">Descargar</span>
+            </button>
+            <button
+              onClick={handleExportMarketplace}
+              className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-sm"
+            >
+              <Cloud className="w-4 h-4 text-slate-500" />
+              <span className="hidden md:inline">Exportar Marketplace (JSON v2)</span>
             </button>
           </div>
         </div>
@@ -602,6 +751,9 @@ export default function InventarioPage() {
                     </div>
 
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-1.5">
+                      <button onClick={() => abrirModalJson(item)} title="Ver JSON v2" className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 transition border border-slate-200">
+                        <FileJson className="w-3.5 h-3.5" />
+                      </button>
                       <button onClick={() => abrirModalEditar(item)} className="p-2 rounded-xl bg-slate-100 hover:bg-orange-50 text-slate-600 hover:text-[#FE6712] transition border border-slate-200">
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>
@@ -629,58 +781,69 @@ export default function InventarioPage() {
 
             <form onSubmit={handleGuardarProducto} className="space-y-4">
 
-              {/* Selector de Nicho */}
-              <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Nicho / Rubro</label>
-                <div className="flex flex-wrap gap-1.5 bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
-                  {NICHOS.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, nicho: n }))}
-                      className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${
-                        formData.nicho === n
-                          ? "bg-[#FE6712] text-white shadow-sm"
-                          : "bg-white text-slate-500 border border-slate-200 hover:border-[#FE6712] hover:text-[#FE6712]"
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
+              {/* Selector de Nicho (oculto en perfil Simple) */}
+              {!esPerfilSimple && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Nicho / Rubro</label>
+                  <div className="flex flex-wrap gap-1.5 bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
+                    {NICHOS.map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, nicho: n }))}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${
+                          formData.nicho === n
+                            ? "bg-[#FE6712] text-white shadow-sm"
+                            : "bg-white text-slate-500 border border-slate-200 hover:border-[#FE6712] hover:text-[#FE6712]"
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Campos Universales */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">SKU / Código Interno</label>
-                  <input type="text" value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+              {!esPerfilSimple && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">SKU / Código Interno</label>
+                    <input type="text" value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Código de Barras</label>
+                    <input type="text" value={formData.barcode} onChange={(e) => setFormData({ ...formData, barcode: e.target.value })} placeholder="Escanear o digitar..." className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Código de Barras</label>
-                  <input type="text" value={formData.barcode} onChange={(e) => setFormData({ ...formData, barcode: e.target.value })} placeholder="Escanear o digitar..." className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
-                </div>
-              </div>
+              )}
 
               <div>
                 <label className="text-[11px] font-bold text-slate-600 block mb-1">Nombre *</label>
                 <input type="text" required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              {esPerfilSimple ? (
                 <div>
                   <label className="text-[11px] font-bold text-slate-600 block mb-1">Categoría</label>
                   <input type="text" value={formData.categoria} onChange={(e) => setFormData({ ...formData, categoria: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                 </div>
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Subcategoría</label>
-                  <input type="text" value={formData.subcategoria} onChange={(e) => setFormData({ ...formData, subcategoria: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Categoría</label>
+                    <input type="text" value={formData.categoria} onChange={(e) => setFormData({ ...formData, categoria: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Subcategoría</label>
+                    <input type="text" value={formData.subcategoria} onChange={(e) => setFormData({ ...formData, subcategoria: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Marca</label>
+                    <input type="text" value={formData.marca} onChange={(e) => setFormData({ ...formData, marca: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Marca</label>
-                  <input type="text" value={formData.marca} onChange={(e) => setFormData({ ...formData, marca: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
-                </div>
-              </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -721,16 +884,65 @@ export default function InventarioPage() {
               </div>
               <input type="text" value={formData.image.startsWith("data:") ? "" : formData.image} onChange={(e) => setFormData({ ...formData, image: e.target.value })} placeholder="o pega una URL de imagen..." className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
 
-              <div>
-                <div className="flex justify-between text-[11px] font-bold text-slate-600 mb-1">
-                  <span>Descripción</span>
-                  <span className="text-slate-400">{formData.descripcion.length} / 250</span>
+              {!esPerfilSimple && (
+                <div>
+                  <div className="flex justify-between text-[11px] font-bold text-slate-600 mb-1">
+                    <span>Descripción</span>
+                    <span className="text-slate-400">{formData.descripcion.length} / 250</span>
+                  </div>
+                  <textarea rows="2" maxLength={250} value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs resize-none"></textarea>
                 </div>
-                <textarea rows="2" maxLength={250} value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs resize-none"></textarea>
-              </div>
+              )}
 
-              {/* Campos Dinámicos por Nicho */}
-              {formData.nicho !== "General" && (
+              {/* Toppings / Modificadores Opcionales (Gastronomía o General, no en perfil Simple) */}
+              {mostrarToppings && !esPerfilSimple && (
+                <div className="pt-3 border-t border-dashed border-slate-200 space-y-2">
+                  <label className="text-[11px] font-bold text-slate-600 block">Toppings / Modificadores Opcionales</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Nombre del extra (ej: Nutella)"
+                      value={nuevoTopping.nombre}
+                      onChange={(e) => setNuevoTopping({ ...nuevoTopping, nombre: e.target.value })}
+                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="$"
+                      value={nuevoTopping.precioExtra}
+                      onChange={(e) => setNuevoTopping({ ...nuevoTopping, precioExtra: e.target.value })}
+                      className="w-20 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAgregarTopping}
+                      className="px-3 py-2 bg-orange-50 hover:bg-[#FE6712] text-[#FE6712] hover:text-white border border-orange-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Añadir
+                    </button>
+                  </div>
+                  {formData.toppings.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {formData.toppings.map((t) => (
+                        <span key={t.id} className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full bg-orange-50 border border-orange-200 text-[11px] font-bold text-orange-700">
+                          {t.nombre} {Number(t.precioExtra) > 0 ? `(+$${Number(t.precioExtra).toFixed(2)})` : "(Gratis)"}
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarTopping(t.id)}
+                            className="w-4 h-4 rounded-full bg-orange-200/60 hover:bg-rose-500 hover:text-white flex items-center justify-center transition"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Campos Dinámicos por Nicho (no en perfil Simple) */}
+              {formData.nicho !== "General" && !esPerfilSimple && (
                 <div className="pt-3 border-t border-dashed border-slate-200 space-y-3">
                   <h4 className="text-[11px] font-extrabold text-[#FE6712] uppercase tracking-wider flex items-center gap-1.5">
                     <LayersIcon className="w-3.5 h-3.5" /> Datos específicos: {formData.nicho}
@@ -896,6 +1108,31 @@ export default function InventarioPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Vista Previa JSON v2 */}
+      {modalJsonAbierto && productoJsonActual && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Vista Previa · Marketplace Core v2</h3>
+                <p className="text-xs text-slate-400">{productoJsonActual.name}</p>
+              </div>
+              <button onClick={() => setModalJsonAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <pre className="flex-1 overflow-auto bg-slate-900 text-emerald-300 text-[11px] leading-relaxed rounded-2xl p-4 font-mono">
+              {JSON.stringify(buildMarketplaceProductPayload(productoJsonActual), null, 2)}
+            </pre>
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button type="button" onClick={() => setModalJsonAbierto(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition">
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

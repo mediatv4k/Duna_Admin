@@ -51,8 +51,10 @@ const FORM_VENTA_INICIAL = {
   paisCodigo: "+58",
   telefono: "",
   direccion: "",
+  condicionVenta: "CREDITO",
   productoId: "",
   varianteNombre: "",
+  toppingsSeleccionadosIds: [],
   cantidad: 1,
   precioUnitario: 0,
   montoTotal: 0,
@@ -117,6 +119,8 @@ export default function CXCPage() {
   const [modalTurnoAbierto, setModalTurnoAbierto] = useState(false);
   const [montoInicialUsd, setMontoInicialUsd] = useState("");
   const [montoInicialBs, setMontoInicialBs] = useState("");
+
+  const [modalAuditoriaAbierto, setModalAuditoriaAbierto] = useState(false);
 
   // Cargar datos locales
   useEffect(() => {
@@ -225,6 +229,7 @@ export default function CXCPage() {
       paisCodigo: cliente.codigoPais || "+58",
       telefono: cliente.telefono || "",
       direccion: cliente.direccion || "",
+      condicionVenta: cliente.condicionVenta || "CREDITO",
     }));
     setErrorDocumento(false);
     if (digitos) setDocumentoBloqueado(true);
@@ -252,6 +257,7 @@ export default function CXCPage() {
         paisCodigo: match.codigoPais || prev.paisCodigo,
         telefono: match.telefono || prev.telefono,
         direccion: match.direccion || prev.direccion,
+        condicionVenta: match.condicionVenta || "CREDITO",
       } : {}),
     }));
     setErrorDocumento(false);
@@ -261,8 +267,16 @@ export default function CXCPage() {
   // Cédula/RIF es la clave única: se libera solo con una acción explícita del usuario
   const handleDesbloquearDocumento = () => {
     setDocumentoBloqueado(false);
-    setFormVenta(prev => ({ ...prev, tipoDocumento: "V-", numeroDocumento: "", cliente: "", paisCodigo: "+58", telefono: "", direccion: "" }));
+    setFormVenta(prev => ({ ...prev, tipoDocumento: "V-", numeroDocumento: "", cliente: "", paisCodigo: "+58", telefono: "", direccion: "", condicionVenta: "CREDITO" }));
   };
+
+  // Auditoría reactiva de deuda: facturas pendientes del cliente detectado por cédula/RIF
+  const facturasAdeudadasCliente = clienteCoincidenteActual
+    ? cuentas.filter(c => extraerDigitos(c.documento) === extraerDigitos(clienteCoincidenteActual.documento) && c.saldo > 0)
+    : [];
+  const deudaTotalUsd = facturasAdeudadasCliente.reduce((acc, c) => acc + c.saldo, 0);
+  const deudaTotalBs = deudaTotalUsd * tasaBcv;
+  const cantidadFacturasPendientes = facturasAdeudadasCliente.length;
 
   const productoSeleccionado = productosInventario.find(p => p.id === formVenta.productoId) || null;
   const esGastronomiaConVariantes = productoSeleccionado?.nicho === "Gastronomía & Heladería" && (productoSeleccionado.variantes || []).length > 0;
@@ -282,6 +296,7 @@ export default function CXCPage() {
       ...prev,
       productoId: prod.id,
       varianteNombre: "",
+      toppingsSeleccionadosIds: [],
       precioUnitario: prod.price,
       montoTotal: prod.price * cant
     }));
@@ -297,14 +312,37 @@ export default function CXCPage() {
     }
   };
 
-  // Recalcular total cuando cambia la cantidad
+  // Suma de recargos de los toppings actualmente seleccionados
+  const sumaToppingsSeleccionados = (productoSeleccionado?.toppings || [])
+    .filter(t => formVenta.toppingsSeleccionadosIds.includes(t.id))
+    .reduce((acc, t) => acc + (Number(t.precioExtra) || 0), 0);
+
+  // Recalcular total cuando cambia la cantidad: (precioBase + toppings) * cantidad
   const handleCambiarCantidad = (cant) => {
     const c = Number(cant) || 1;
     setFormVenta(prev => ({
       ...prev,
       cantidad: c,
-      montoTotal: prev.precioUnitario * c
+      montoTotal: (prev.precioUnitario + sumaToppingsSeleccionados) * c
     }));
+  };
+
+  // Alterna un topping y recalcula el total: (precioBase + sumaToppingsSeleccionados) * cantidad
+  const handleToggleTopping = (topping) => {
+    setFormVenta(prev => {
+      const yaSeleccionado = prev.toppingsSeleccionadosIds.includes(topping.id);
+      const nuevosIds = yaSeleccionado
+        ? prev.toppingsSeleccionadosIds.filter(id => id !== topping.id)
+        : [...prev.toppingsSeleccionadosIds, topping.id];
+      const nuevaSuma = (productoSeleccionado?.toppings || [])
+        .filter(t => nuevosIds.includes(t.id))
+        .reduce((acc, t) => acc + (Number(t.precioExtra) || 0), 0);
+      return {
+        ...prev,
+        toppingsSeleccionadosIds: nuevosIds,
+        montoTotal: (prev.precioUnitario + nuevaSuma) * prev.cantidad,
+      };
+    });
   };
 
   const montoAbonadoUsd = formVenta.monedaAbono === "ves"
@@ -333,7 +371,8 @@ export default function CXCPage() {
     }
     setErrorDocumento(false);
 
-    const abonado = montoAbonadoUsd;
+    const esContado = formVenta.condicionVenta === "CONTADO";
+    const abonado = esContado ? formVenta.montoTotal : montoAbonadoUsd;
 
     if (abonado > 0 && requiereDatosTransferenciaVenta) {
       const ref = formVenta.referencia.trim();
@@ -353,8 +392,8 @@ export default function CXCPage() {
 
     const historialAbonos = abonado > 0 ? [{
       fecha: new Date().toLocaleString("es-VE"),
-      moneda: formVenta.monedaAbono,
-      montoOriginal: Number(formVenta.montoAbonadoInput) || 0,
+      moneda: esContado ? "usd" : formVenta.monedaAbono,
+      montoOriginal: esContado ? formVenta.montoTotal : (Number(formVenta.montoAbonadoInput) || 0),
       tasaBcv,
       montoUsd: abonado,
       metodoPago: formVenta.metodoPago,
@@ -364,7 +403,13 @@ export default function CXCPage() {
       titular: requiereDatosTransferenciaVenta ? formVenta.titular : "",
     }] : [];
 
+    // Toppings elegidos para esta línea de venta, formateados para el desglose e historial
+    const extrasSeleccionados = (productoSeleccionado?.toppings || [])
+      .filter(t => formVenta.toppingsSeleccionadosIds.includes(t.id))
+      .map(t => Number(t.precioExtra) > 0 ? `${t.nombre} (+$${Number(t.precioExtra).toFixed(2)})` : t.nombre);
+
     const nuevaCuenta = {
+      // eslint-disable-next-line react-hooks/purity -- id generado en un manejador de evento (submit), no durante el render
       id: `FAC-${Date.now().toString().slice(-6)}`,
       fecha: new Date().toLocaleDateString("es-VE"),
       cliente: formVenta.cliente,
@@ -374,6 +419,8 @@ export default function CXCPage() {
       productoNombre: productoSeleccionado
         ? `${productoSeleccionado.name}${formVenta.varianteNombre ? ` (${formVenta.varianteNombre})` : ""}`
         : "Venta General",
+      precioBaseUnitario: formVenta.precioUnitario,
+      extras: extrasSeleccionados,
       cantidad: formVenta.cantidad,
       total: formVenta.montoTotal,
       abonado,
@@ -405,6 +452,7 @@ export default function CXCPage() {
       ? clientes.find(c => normalizarDocumento(c.documento) === documentoFinal)
       : clientes.find(c => !c.documento && c.nombre.toLowerCase() === formVenta.cliente.toLowerCase());
     const clienteActualizado = {
+      // eslint-disable-next-line react-hooks/purity -- id generado en un manejador de evento (submit), no durante el render
       id: clienteExistente?.id || `cli_${Date.now()}`,
       documento: documentoFinal,
       nombre: formVenta.cliente,
@@ -412,6 +460,8 @@ export default function CXCPage() {
       telefono: formVenta.telefono || "",
       direccion: formVenta.direccion || "",
       sucursalId: usuario?.sucursalId || "",
+      condicionVenta: formVenta.condicionVenta,
+      limiteCredito: clienteExistente?.limiteCredito || 0,
     };
     if (clienteExistente) {
       actualizarClientes(clientes.map(c => c === clienteExistente ? clienteActualizado : c));
@@ -432,6 +482,7 @@ export default function CXCPage() {
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
+    setModalAuditoriaAbierto(false);
   };
 
   const handleCerrarModalVenta = () => {
@@ -440,6 +491,7 @@ export default function CXCPage() {
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
+    setModalAuditoriaAbierto(false);
   };
 
   // Modal dedicado de abonos posteriores
@@ -514,7 +566,9 @@ export default function CXCPage() {
   const handleEnviarWhatsapp = (cuenta) => {
     const numero = `${(cuenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(cuenta.telefono)}`;
     const saldoBs = formatearBs(cuenta.saldo, tasaBcv);
-    const mensaje = `Estimado(a) *${cuenta.cliente}*, le saludamos de *D'una*. Le compartimos el estado de su cuenta: Factura: *${cuenta.id}* | Total: *$${cuenta.total.toFixed(2)}* | Abonado: *$${cuenta.abonado.toFixed(2)}* | Saldo pendiente: *$${cuenta.saldo.toFixed(2)} USD* (*Bs. ${saldoBs}* a Tasa BCV: Bs. ${tasaBcv}). Quedamos atentos a su comprobante.`;
+    const lineaExtras = cuenta.extras && cuenta.extras.length > 0 ? ` [Extras: ${cuenta.extras.join(", ")}]` : "";
+    const lineaProducto = `• ${cuenta.cantidad}x ${cuenta.productoNombre} ($${(cuenta.precioBaseUnitario || 0).toFixed(2)})${lineaExtras}`;
+    const mensaje = `Estimado(a) *${cuenta.cliente}*, le saludamos de *D'una*. Le compartimos el estado de su cuenta:\n${lineaProducto}\nFactura: *${cuenta.id}* | Total: *$${cuenta.total.toFixed(2)}* | Abonado: *$${cuenta.abonado.toFixed(2)}* | Saldo pendiente: *$${cuenta.saldo.toFixed(2)} USD* (*Bs. ${saldoBs}* a Tasa BCV: Bs. ${tasaBcv}). Quedamos atentos a su comprobante.`;
     window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`, "_blank");
   };
 
@@ -842,6 +896,35 @@ export default function CXCPage() {
                 </div>
               </div>
 
+              {clienteCoincidenteActual && (
+                <div className={`rounded-xl border px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold ${
+                  cantidadFacturasPendientes > 0 ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"
+                }`}>
+                  {cantidadFacturasPendientes > 0 ? (
+                    <>
+                      <span>⚠️ Deuda: ${deudaTotalUsd.toFixed(2)} (~Bs. {deudaTotalBs.toFixed(2)}) • {cantidadFacturasPendientes} fact.</span>
+                      <button
+                        type="button"
+                        onClick={() => setModalAuditoriaAbierto(true)}
+                        className="px-2.5 py-1 bg-white border border-amber-300 rounded-lg text-[10px] font-black text-amber-700 hover:bg-amber-100 transition shrink-0"
+                      >
+                        Ver / Cobrar Facturas
+                      </button>
+                    </>
+                  ) : (
+                    <span>✓ Al Día</span>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Condición de Venta</label>
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => setFormVenta({ ...formVenta, condicionVenta: "CONTADO" })} className={pillClase(formVenta.condicionVenta === "CONTADO")}>Solo Contado</button>
+                  <button type="button" onClick={() => setFormVenta({ ...formVenta, condicionVenta: "CREDITO" })} className={pillClase(formVenta.condicionVenta === "CREDITO")}>Permite Crédito</button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-[11px] font-bold text-slate-600 block mb-1">Código País</label>
@@ -933,6 +1016,31 @@ export default function CXCPage() {
                 </div>
               )}
 
+              {productoSeleccionado?.toppings?.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Toppings / Modificadores</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {productoSeleccionado.toppings.map(t => {
+                      const activo = formVenta.toppingsSeleccionadosIds.includes(t.id);
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => handleToggleTopping(t)}
+                          className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition ${
+                            activo
+                              ? "bg-[#FE6712] text-white border-[#FE6712] shadow-sm"
+                              : "bg-white text-slate-600 border-slate-200 hover:border-[#FE6712] hover:text-[#FE6712]"
+                          }`}
+                        >
+                          {t.nombre} {Number(t.precioExtra) > 0 ? `(+$${Number(t.precioExtra).toFixed(2)})` : "(Gratis)"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] font-bold text-slate-600 block mb-1">Cantidad</label>
@@ -957,30 +1065,37 @@ export default function CXCPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Abono Inicial</label>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <button type="button" onClick={() => setFormVenta({ ...formVenta, monedaAbono: "usd" })} className={pillClase(formVenta.monedaAbono === "usd")}>$ USD</button>
-                  <button type="button" onClick={() => setFormVenta({ ...formVenta, monedaAbono: "ves" })} className={pillClase(formVenta.monedaAbono === "ves")}>Bs VES</button>
+              {formVenta.condicionVenta === "CONTADO" ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+                  <p className="text-[11px] font-bold text-emerald-700">Venta de Contado: se cobra el 100% del total al momento, sin dejar saldo.</p>
+                  <p className="text-lg font-black text-emerald-800 mt-1">${formVenta.montoTotal.toFixed(2)}</p>
                 </div>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formVenta.montoAbonadoInput}
-                  onChange={(e) => setFormVenta({ ...formVenta, montoAbonadoInput: e.target.value })}
-                  placeholder="0.00"
-                  className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-xl text-xs font-bold text-emerald-800 focus:outline-none"
-                />
-                {Number(formVenta.montoAbonadoInput) > 0 && (
-                  <p className="text-[11px] text-emerald-600 font-bold mt-1.5">
-                    {formVenta.monedaAbono === "ves"
-                      ? `≈ $${montoAbonadoUsd.toFixed(2)} USD`
-                      : `≈ Bs. ${formatearBs(montoAbonadoUsd, tasaBcv)}`}
-                  </p>
-                )}
-              </div>
+              ) : (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Abono Inicial</label>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <button type="button" onClick={() => setFormVenta({ ...formVenta, monedaAbono: "usd" })} className={pillClase(formVenta.monedaAbono === "usd")}>$ USD</button>
+                    <button type="button" onClick={() => setFormVenta({ ...formVenta, monedaAbono: "ves" })} className={pillClase(formVenta.monedaAbono === "ves")}>Bs VES</button>
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formVenta.montoAbonadoInput}
+                    onChange={(e) => setFormVenta({ ...formVenta, montoAbonadoInput: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-xl text-xs font-bold text-emerald-800 focus:outline-none"
+                  />
+                  {Number(formVenta.montoAbonadoInput) > 0 && (
+                    <p className="text-[11px] text-emerald-600 font-bold mt-1.5">
+                      {formVenta.monedaAbono === "ves"
+                        ? `≈ $${montoAbonadoUsd.toFixed(2)} USD`
+                        : `≈ Bs. ${formatearBs(montoAbonadoUsd, tasaBcv)}`}
+                    </p>
+                  )}
+                </div>
+              )}
 
-              {Number(formVenta.montoAbonadoInput) > 0 && (
+              {(Number(formVenta.montoAbonadoInput) > 0 || formVenta.condicionVenta === "CONTADO") && (
                 <div className="space-y-3 pt-3 border-t border-dashed border-slate-200">
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">Método de Pago</label>
@@ -1103,6 +1218,89 @@ export default function CXCPage() {
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
               >
                 <Check className="w-4 h-4" /> Confirmar Abono
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Auditoría de Deuda */}
+      {modalAuditoriaAbierto && clienteCoincidenteActual && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Auditoría de Deuda</h3>
+                <p className="text-xs text-slate-400">{clienteCoincidenteActual.nombre} • {clienteCoincidenteActual.documento}</p>
+              </div>
+              <button onClick={() => setModalAuditoriaAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-center">
+                <span className="text-[11px] font-bold text-rose-500 uppercase block">Deuda Total</span>
+                <div className="text-2xl font-black text-rose-700">${deudaTotalUsd.toFixed(2)}</div>
+                <div className="text-xs text-rose-500 font-semibold">Bs. {formatearBs(deudaTotalUsd, tasaBcv)}</div>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center flex flex-col justify-center">
+                <span className="text-[11px] font-bold text-slate-500 uppercase block">Facturas Pendientes</span>
+                <div className="text-2xl font-black text-slate-900">{cantidadFacturasPendientes}</div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                  <tr>
+                    <th className="p-3">Factura / Fecha</th>
+                    <th className="p-3">Total</th>
+                    <th className="p-3">Saldo</th>
+                    <th className="p-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {facturasAdeudadasCliente.map(f => (
+                    <tr key={f.id} className="hover:bg-slate-50/50 transition">
+                      <td className="p-3">
+                        <strong className="block font-black text-slate-900">{f.id}</strong>
+                        <span className="text-[11px] text-slate-400">{f.fecha}</span>
+                      </td>
+                      <td className="p-3 font-bold text-slate-800">${f.total.toFixed(2)}</td>
+                      <td className="p-3">
+                        <span className="font-black text-rose-600 block">${f.saldo.toFixed(2)}</span>
+                        <span className="text-[10px] text-rose-400 font-semibold">Bs. {formatearBs(f.saldo, tasaBcv)}</span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleEnviarWhatsapp(f)}
+                            disabled={!f.telefono}
+                            title={f.telefono ? "Cobrar por WhatsApp" : "Sin teléfono registrado"}
+                            className="p-1.5 text-emerald-600 hover:text-white hover:bg-emerald-600 rounded-lg border border-emerald-200 hover:border-emerald-600 transition disabled:opacity-30 disabled:pointer-events-none"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => abrirModalAbono(f)}
+                            className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg font-bold text-[10px] transition"
+                          >
+                            Abonar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button type="button" onClick={() => setModalAuditoriaAbierto(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition">
+                Cerrar y continuar con la venta
               </button>
             </div>
           </div>

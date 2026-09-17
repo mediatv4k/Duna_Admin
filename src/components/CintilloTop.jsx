@@ -1,8 +1,9 @@
 "use client";
 import React from "react";
-import { MapPin, Coins, RefreshCw, UserRound } from "lucide-react";
+import { MapPin, Coins, RefreshCw, UserRound, Store } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser, ROLES } from "@/context/UserContext";
+import { useBusinessProfile, PERFILES_NEGOCIO } from "@/context/BusinessProfileContext";
 
 const OPCIONES_MODO = [
   { valor: "dual", etiqueta: "Dual ($/Bs)" },
@@ -16,9 +17,17 @@ const ROL_ETIQUETA = {
   CONTADOR: "Contador",
 };
 
+const PERFIL_ETIQUETA = {
+  SIMPLE: "Simple",
+  RETAIL: "Retail",
+  GASTRONOMIA: "Gastronomía",
+  FARMACIA: "Farmacia",
+};
+
 export default function CintilloTop() {
   const { modoMoneda, setModoMoneda, tasaBcv, cargandoTasa, ultimaHora, consultarApiBCV } = useCurrency();
   const { usuario, cambiarRol } = useUser();
+  const { perfil, setPerfil } = useBusinessProfile();
 
   return (
     <div className="sticky top-0 z-50 bg-[#0a0e17] text-slate-300 border-b border-white/5">
@@ -43,6 +52,22 @@ export default function CintilloTop() {
               >
                 {ROLES.map((r) => (
                   <option key={r} value={r} className="text-slate-900">{ROL_ETIQUETA[r] || r}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {perfil && (
+            <div className="hidden md:flex items-center gap-1.5 bg-white/5 rounded-full pl-2.5 pr-1.5 py-1 border border-white/10 shrink-0">
+              <Store className="w-3.5 h-3.5 text-[#FE6712] shrink-0" />
+              <select
+                value={perfil}
+                onChange={(e) => setPerfil(e.target.value)}
+                title="Cambiar perfil de negocio (solo pruebas)"
+                className="bg-transparent text-[10px] font-bold text-slate-300 hover:text-white focus:outline-none cursor-pointer"
+              >
+                {PERFILES_NEGOCIO.map((p) => (
+                  <option key={p} value={p} className="text-slate-900">{PERFIL_ETIQUETA[p] || p}</option>
                 ))}
               </select>
             </div>

@@ -1,6 +1,7 @@
 ﻿import "./globals.css";
 import { CurrencyProvider } from "@/context/CurrencyContext";
 import { UserProvider } from "@/context/UserContext";
+import { BusinessProfileProvider } from "@/context/BusinessProfileContext";
 import CintilloTop from "@/components/CintilloTop";
 
 export const metadata = {
@@ -13,10 +14,12 @@ export default function RootLayout({ children }) {
     <html lang="es">
       <body className="bg-slate-50 text-slate-900 antialiased">
         <UserProvider>
-          <CurrencyProvider>
-            <CintilloTop />
-            {children}
-          </CurrencyProvider>
+          <BusinessProfileProvider>
+            <CurrencyProvider>
+              <CintilloTop />
+              {children}
+            </CurrencyProvider>
+          </BusinessProfileProvider>
         </UserProvider>
       </body>
     </html>
