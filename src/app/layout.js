@@ -3,6 +3,7 @@ import { CurrencyProvider } from "@/context/CurrencyContext";
 import { UserProvider } from "@/context/UserContext";
 import { BusinessProfileProvider } from "@/context/BusinessProfileContext";
 import CintilloTop from "@/components/CintilloTop";
+import ManualDrawer from "@/components/ManualDrawer";
 
 export const metadata = {
   title: "D'una Admin - Plataforma de Gestión Comercial",
@@ -18,6 +19,7 @@ export default function RootLayout({ children }) {
             <CurrencyProvider>
               <CintilloTop />
               {children}
+              <ManualDrawer />
             </CurrencyProvider>
           </BusinessProfileProvider>
         </UserProvider>
