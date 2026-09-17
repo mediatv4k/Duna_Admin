@@ -24,6 +24,7 @@ const MODULO_ESTILO = {
 
 const RUTA_A_MODULO = {
   "/cxc": "CXC",
+  "/pos": "CAJA",
   "/inventario": "INVENTARIO",
   "/compras": "COMPRAS",
   "/cxp": "CXP",

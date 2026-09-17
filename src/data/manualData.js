@@ -58,13 +58,32 @@ const manualData = [
     palabrasClave: ["toppings", "modificadores", "extras", "agregados", "recargo", "nutella"],
   },
   {
+    id: "POS_TERMINAL_INTRO",
+    modulo: "CAJA",
+    ruta: "/pos",
+    titulo: "Terminal POS: Mostrador de Facturación Rápida",
+    resumen: "El entorno de pantalla completa exclusivo para vender: sin métricas de la empresa, solo lo que el cajero necesita para atender rápido.",
+    pasos: [
+      "Entra a 'Terminal POS' desde el botón naranja del cintillo superior, la tarjeta destacada de la portada o el enlace en CXC.",
+      "Abre un turno de caja indicando el fondo inicial en $ y Bs.; la cabecera muestra el cajero activo y la hora de apertura mientras el turno esté abierto.",
+      "Columna izquierda: busca o registra al cliente por cédula/RIF y arma el ticket escaneando o buscando productos; el campo de producto mantiene el foco listo para el siguiente escaneo.",
+      "Columna derecha: el ticket permanece siempre visible con sus controles de cantidad, el total gigante en $ y Bs., y el botón 'COBRAR / FINALIZAR VENTA' que abre el panel de medios de pago.",
+      "Al cerrar el turno con 'Cerrar Turno / Arqueo', el sistema confirma cuántas ventas se registraron en esa sesión de caja.",
+    ],
+    tips: [
+      "La Terminal POS no muestra deuda total de la empresa ni recaudación acumulada: solo la morosidad del cliente que se está atendiendo en ese momento.",
+      "La cartera completa de créditos, abonos posteriores y el histórico de facturas se administra en 'Ventas & CXC' (botón 'Administración CXC' en la cabecera).",
+    ],
+    palabrasClave: ["pos", "terminal pos", "mostrador", "caja", "pantalla completa", "turno de caja", "arqueo", "facturacion rapida"],
+  },
+  {
     id: "captura-escudo-clientes",
-    modulo: "CXC",
-    ruta: "/cxc",
+    modulo: "CAJA",
+    ruta: "/pos",
     titulo: "Captura y Escudo de Clientes",
     resumen: "Detección en tiempo real de clientes existentes por cédula/RIF para evitar duplicados en el directorio.",
     pasos: [
-      "En 'Nueva Venta / Factura', elige el prefijo (V-, J-, E-, G- o P-) y escribe solo los números de la cédula/RIF.",
+      "En la Terminal POS, elige el prefijo (V-, J-, E-, G- o P-) y escribe solo los números de la cédula/RIF en la tarjeta de Cliente.",
       "Si el documento coincide con un cliente ya registrado, el campo se resalta en verde con el badge '✓ Cliente Registrado'.",
       "Nombre, Código de País, Teléfono y Dirección se autorrellenan al instante.",
       "El campo queda en modo solo lectura para proteger la clave única; usa el enlace 'Cambiar' si necesitas capturar otro cliente.",
@@ -77,8 +96,8 @@ const manualData = [
   },
   {
     id: "auditoria-deuda-pos",
-    modulo: "CXC",
-    ruta: "/cxc",
+    modulo: "CAJA",
+    ruta: "/pos",
     titulo: "Auditoría de Deuda en POS",
     resumen: "Alerta inmediata de facturas vencidas del cliente detectado, con acceso directo a cobrarlas.",
     pasos: [
@@ -95,16 +114,16 @@ const manualData = [
   },
   {
     id: "CXC_TICKET_MULTI",
-    modulo: "CXC",
-    ruta: "/cxc",
+    modulo: "CAJA",
+    ruta: "/pos",
     titulo: "Ventas Multi-Producto y Carrito en Mostrador",
     resumen: "Cómo emitir facturas con múltiples artículos, variantes, toppings y recálculo acumulado.",
     pasos: [
-      "En 'Nueva Venta / Factura', busca cada producto por nombre, SKU o escaneando su código de barras.",
+      "En la Terminal POS, busca cada producto por nombre, SKU o escaneando su código de barras en el campo con auto-foco permanente.",
       "Si el producto tiene sabores/variantes o toppings, elígelos antes de agregarlo; luego indica la cantidad y pulsa '+ Agregar al Ticket'.",
       "Repite la búsqueda para cada artículo: si vuelves a agregar el mismo producto con la misma variante y los mismos toppings, su cantidad se suma automáticamente en vez de crear una fila duplicada.",
       "En la bandeja del ticket ajusta cantidades con los botones [-]/[+] o escribiendo el número, y quita renglones con el ícono de papelera.",
-      "Revisa el 'Total Factura' ($ y Bs) antes de definir el abono y confirmar con 'Registrar Factura'.",
+      "Revisa el 'Total a Cobrar' ($ y Bs) en el ticket permanente y pulsa 'COBRAR / FINALIZAR VENTA' para definir el abono y confirmar con 'Registrar Factura'.",
     ],
     tips: [
       "Un lector de código de barras que escribe el código y envía Enter agrega la unidad directo al ticket, sin pasos extra (salvo que el producto exija elegir variante).",
@@ -116,8 +135,8 @@ const manualData = [
   },
   {
     id: "CXC_LINK_PAGO",
-    modulo: "CXC",
-    ruta: "/cxc",
+    modulo: "CAJA",
+    ruta: "/pos",
     titulo: "Autoservicio de Pago Móvil y Validación Digital",
     resumen: "Envío de link interactivo al cliente, reporte de referencia/captura y validación en caja.",
     pasos: [
@@ -136,8 +155,8 @@ const manualData = [
   },
   {
     id: "CXC_ESPERA_BORRADOR",
-    modulo: "CXC",
-    ruta: "/cxc",
+    modulo: "CAJA",
+    ruta: "/pos",
     titulo: "Ventas en Espera y Rescate de Borrador",
     resumen: "Cómo pausar compras de clientes indecisos para seguir atendiendo la cola y recuperar ventas tras cortes de energía o cierres de ventana.",
     pasos: [
@@ -156,12 +175,12 @@ const manualData = [
   },
   {
     id: "control-contado-credito",
-    modulo: "CXC",
-    ruta: "/cxc",
+    modulo: "CAJA",
+    ruta: "/pos",
     titulo: "Control de Contado vs Crédito",
     resumen: "Define si un cliente puede quedar debiendo o si debe pagar el 100% de la factura en el momento.",
     pasos: [
-      "En 'Nueva Venta / Factura', ubica el switch 'Condición de Venta'.",
+      "En la Terminal POS, pulsa 'COBRAR / FINALIZAR VENTA' y ubica el switch 'Condición de Venta'.",
       "Selecciona 'Permite Crédito' (opción por defecto) para admitir abonos parciales y saldo pendiente.",
       "Selecciona 'Solo Contado' para exigir el pago completo: el sistema fija el abono al 100% del total automáticamente.",
       "Al registrar la factura de contado, el saldo queda en $0.00 y el estado pasa directo a 'PAGADO'.",
@@ -171,6 +190,26 @@ const manualData = [
       "Aun en modo contado puedes elegir el método de pago (efectivo, pago móvil, transferencia, etc.).",
     ],
     palabrasClave: ["contado", "credito", "abono", "condicion de venta", "saldo pendiente"],
+  },
+  {
+    id: "CXC_ADMIN_CARTERA",
+    modulo: "CXC",
+    ruta: "/cxc",
+    titulo: "Central Administrativa de Cartera y Cobranzas",
+    resumen: "Cómo usar CXC para auditar la cartera de créditos, cobrar abonos posteriores y enviar recibos, sin mezclarse con el mostrador de venta.",
+    pasos: [
+      "'Ventas & CXC' (/cxc) es la vista administrativa: aquí no se registran ventas nuevas, solo se gestiona lo ya facturado desde la Terminal POS.",
+      "Revisa las tarjetas de 'Total por Cobrar', 'Total Recaudado' y 'Facturas con Saldo' para el estado general de la cartera.",
+      "Busca cualquier factura por cliente, cédula o número de documento en la tabla de cuentas.",
+      "Pulsa 'Abonar' en cualquier fila con saldo pendiente para registrar un abono posterior (efectivo, pago móvil, transferencia, etc.) con el mismo escudo anti-duplicados de referencias.",
+      "Usa el ícono de WhatsApp para reenviarle al cliente su estado de cuenta con el saldo actualizado en $ y Bs.",
+      "Pulsa 'Ir a Terminal POS (Ventas)' en la cabecera para saltar al mostrador cuando necesites facturar una venta nueva.",
+    ],
+    tips: [
+      "Si necesitas facturar, hazlo siempre desde /pos: CXC ya no abre un ticket de venta ni descuenta inventario.",
+      "Eliminar un registro desde aquí es permanente y no reintegra el inventario descontado; úsalo solo para corregir errores de captura.",
+    ],
+    palabrasClave: ["cxc", "cartera", "cobranzas", "abono posterior", "administracion", "auditoria de cartera"],
   },
   {
     id: "COMPRAS_RECEPCION",

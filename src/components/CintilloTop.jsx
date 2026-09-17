@@ -2,7 +2,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MapPin, Coins, RefreshCw, UserRound, Store, Wallet } from "lucide-react";
+import { MapPin, Coins, RefreshCw, UserRound, Store, Wallet, Zap } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser, ROLES } from "@/context/UserContext";
 import { useBusinessProfile, PERFILES_NEGOCIO } from "@/context/BusinessProfileContext";
@@ -81,6 +81,15 @@ export default function CintilloTop() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/pos"
+            title="Terminal POS"
+            className="flex items-center gap-1.5 bg-[#FE6712] hover:bg-[#ea580c] rounded-full px-2.5 py-1 border border-[#FE6712] transition shrink-0 shadow-sm shadow-orange-500/20"
+          >
+            <Zap className="w-3.5 h-3.5 text-white shrink-0" />
+            <span className="font-bold text-white whitespace-nowrap">Terminal POS</span>
+          </Link>
+
           <Link
             href="/cxp"
             title="Cuentas por Pagar"

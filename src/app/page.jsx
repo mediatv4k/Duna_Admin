@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Receipt, ShoppingCart, Boxes, PlusCircle,
-  Wallet, Truck, CheckCircle2, Sparkles
+  Wallet, Truck, CheckCircle2, Sparkles, Zap, ArrowRight
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 
@@ -92,6 +92,31 @@ export default function Home() {
           </div>
           <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-orange-500/5 rounded-full blur-3xl pointer-events-none"></div>
         </div>
+
+        {/* Acceso Destacado a Terminal POS */}
+        <Link
+          href="/pos"
+          className="group block rounded-3xl bg-[#0a0e17] hover:bg-[#12172a] p-6 sm:p-7 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden"
+        >
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-[#FE6712] text-white flex items-center justify-center shrink-0">
+                <Zap className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[11px] font-extrabold text-[#FE6712] uppercase tracking-wider">Mostrador · Caja</span>
+                <h3 className="text-lg font-extrabold text-white mt-0.5">Terminal POS — Facturación Rápida</h3>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-md">
+                  Pantalla completa para vender: código de barras, ticket permanente, ventas en espera y cobro con Pago Móvil o tarjeta.
+                </p>
+              </div>
+            </div>
+            <span className="px-5 py-3 bg-white text-slate-900 rounded-2xl text-xs font-bold transition flex items-center gap-2 shrink-0 group-hover:bg-[#FE6712] group-hover:text-white">
+              Abrir Terminal POS <ArrowRight className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="absolute -right-6 -bottom-10 w-64 h-64 bg-[#FE6712]/10 rounded-full blur-3xl pointer-events-none"></div>
+        </Link>
 
         {/* Tarjetas de Indicadores (Saldos en $0.00) */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
