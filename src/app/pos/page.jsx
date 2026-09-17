@@ -10,6 +10,7 @@ import QRCode from "qrcode";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser } from "@/context/UserContext";
 import bancosVenezuela from "@/data/bancosVenezuela";
+import { escucharDocumento, guardarDocumento, actualizarDocumento } from "@/lib/firebase";
 
 const PAISES = [
   { code: "+58", name: "Venezuela" },
@@ -100,6 +101,11 @@ function formatearBs(montoUsd, tasaBcv) {
   return (montoUsd * tasaBcv).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Origen público real (dominio de Vercel en producción, localhost en desarrollo); nunca hardcodeado
+function obtenerOrigen() {
+  return typeof window !== "undefined" ? window.location.origin : "";
+}
+
 // Normaliza cédula/RIF: quita puntos y espacios, mayúsculas, y asegura guion tras el prefijo (V, J, E, G, P)
 function normalizarDocumento(raw) {
   if (!raw) return "";
@@ -151,7 +157,7 @@ export default function POSPage() {
   const [formConfigPagoMovil, setFormConfigPagoMovil] = useState(CONFIG_PAGOMOVIL_DEFECTO);
   const [copiadoDatosPagoMovil, setCopiadoDatosPagoMovil] = useState(false);
 
-  const [pagosPendientes, setPagosPendientes] = useState([]);
+  const [pagoMovilActivo, setPagoMovilActivo] = useState(null);
   const [tokenPagoActivo, setTokenPagoActivo] = useState(null);
   const [modalComprobanteAbierto, setModalComprobanteAbierto] = useState(false);
 
@@ -223,15 +229,6 @@ export default function POSPage() {
       setFormVenta(prev => ({ ...prev, bancoReceptor: CONFIG_PAGOMOVIL_DEFECTO.bancoReceptor }));
     }
 
-    const pagosGuardados = localStorage.getItem("duna_pagos_pendientes");
-    if (pagosGuardados) {
-      try {
-        setPagosPendientes(JSON.parse(pagosGuardados));
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
     const borradorGuardado = localStorage.getItem("duna_pos_draft");
     if (borradorGuardado) {
       try {
@@ -293,11 +290,6 @@ export default function POSPage() {
     actualizarConfigPagoMovil(formConfigPagoMovil);
     setFormVenta(prev => ({ ...prev, bancoReceptor: formConfigPagoMovil.bancoReceptor || prev.bancoReceptor }));
     setModalConfigPagoMovilAbierto(false);
-  };
-
-  const actualizarPagosPendientes = (nuevos) => {
-    setPagosPendientes(nuevos);
-    localStorage.setItem("duna_pagos_pendientes", JSON.stringify(nuevos));
   };
 
   const actualizarProductosInventario = (nuevos) => {
@@ -597,13 +589,11 @@ export default function POSPage() {
     }
   };
 
-  // El cliente encontrado en duna_pagos_pendientes para el token generado en esta venta (se actualiza por polling)
-  const pagoMovilActivo = tokenPagoActivo ? pagosPendientes.find(p => p.token === tokenPagoActivo) || null : null;
-
   // Crea la intención de pago con token y abre WhatsApp con el link de autoservicio
   const handleEnviarLinkPagoMovil = () => {
     const token = generarTokenPago();
     const nuevaIntencion = {
+      id: token,
       token,
       fechaCreacion: new Date().toLocaleString("es-VE"),
       clienteNombre: formVenta.cliente,
@@ -615,38 +605,31 @@ export default function POSPage() {
       referenciaReportada: "",
       imagenComprobante: null,
     };
-    actualizarPagosPendientes([nuevaIntencion, ...pagosPendientes]);
+    guardarDocumento("duna_pagos_pendientes", token, nuevaIntencion).catch((e) => console.error(e));
     setTokenPagoActivo(token);
 
-    const link = `${window.location.origin}/pago/${token}`;
+    const link = `${obtenerOrigen()}/pago/${token}`;
     const numero = `${(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`;
     const mensaje = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza tu Pago Móvil desde este link seguro:\n${link}\n\n💰 Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (≈ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nAl confirmar tu pago allí, tu factura queda lista para validarse en caja.`;
     window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`, "_blank");
   };
 
-  // Escucha reactiva: revisa cada 2s si el cliente reportó el comprobante para el token activo
+  // Escucha reactiva (Firestore en vivo, o polling local): detecta si el cliente ya reportó el comprobante
   useEffect(() => {
     if (!tokenPagoActivo) return undefined;
-    const intervalo = setInterval(() => {
-      try {
-        const guardados = JSON.parse(localStorage.getItem("duna_pagos_pendientes") || "[]");
-        const match = guardados.find(p => p.token === tokenPagoActivo);
-        if (match && match.status === "REPORTADO") {
-          setPagosPendientes(guardados);
-          setFormVenta(prev => ({ ...prev, referencia: match.referenciaReportada || prev.referencia }));
-        }
-      } catch (e) {
-        console.error(e);
+    return escucharDocumento("duna_pagos_pendientes", tokenPagoActivo, (pago) => {
+      setPagoMovilActivo(pago);
+      if (pago && pago.status === "REPORTADO") {
+        setFormVenta(prev => ({ ...prev, referencia: pago.referenciaReportada || prev.referencia }));
       }
     }, 2000);
-    return () => clearInterval(intervalo);
   }, [tokenPagoActivo]);
 
   // Genera el QR (data URL) apuntando al portal móvil del supervisor cada vez que hay un token nuevo pendiente
   useEffect(() => {
     if (!autorizacionActual || autorizacionActual.status !== "PENDIENTE") return undefined;
     let cancelado = false;
-    const urlSupervisor = `${window.location.origin}/supervisor?token=${autorizacionActual.tokenAuth}`;
+    const urlSupervisor = `${obtenerOrigen()}/supervisor?token=${autorizacionActual.tokenAuth}`;
     QRCode.toDataURL(urlSupervisor, { width: 220, margin: 1, color: { dark: "#0a0e17", light: "#ffffff" } })
       .then((dataUrl) => {
         if (!cancelado) setQrDataUrl(dataUrl);
@@ -662,37 +645,28 @@ export default function POSPage() {
       const restante = Math.max(0, Math.round((autorizacionActual.expiraEn - Date.now()) / 1000));
       setSegundosRestantes(restante);
       if (restante === 0) {
-        const actuales = JSON.parse(localStorage.getItem("duna_autorizaciones_credito") || "[]");
-        const actualizadas = actuales.map(a => a.tokenAuth === autorizacionActual.tokenAuth ? { ...a, status: "EXPIRADA" } : a);
-        localStorage.setItem("duna_autorizaciones_credito", JSON.stringify(actualizadas));
+        actualizarDocumento("duna_autorizaciones_credito", autorizacionActual.tokenAuth, { status: "EXPIRADA" }).catch((e) => console.error(e));
         setAutorizacionActual(prev => (prev ? { ...prev, status: "EXPIRADA" } : prev));
       }
     }, 1000);
     return () => clearInterval(intervalo);
   }, [modalAutorizacionAbierto, autorizacionActual]);
 
-  // Listener reactivo: revisa cada 1.5s si el supervisor ya aprobó/rechazó desde su teléfono
+  // Listener reactivo (Firestore en vivo, o polling local): detecta si el supervisor ya aprobó/rechazó desde su teléfono
   useEffect(() => {
     if (!modalAutorizacionAbierto || autorizacionActual?.status !== "PENDIENTE") return undefined;
-    const intervalo = setInterval(() => {
-      try {
-        const guardadas = JSON.parse(localStorage.getItem("duna_autorizaciones_credito") || "[]");
-        const match = guardadas.find(a => a.tokenAuth === autorizacionActual.tokenAuth);
-        if (match && match.status !== "PENDIENTE") {
-          setAutorizacionActual(match);
-          if (match.status === "APROBADA") setAutorizacionCredito(match.supervisorInfo);
-        }
-      } catch (err) {
-        console.error(err);
+    return escucharDocumento("duna_autorizaciones_credito", autorizacionActual.tokenAuth, (match) => {
+      if (match && match.status !== "PENDIENTE") {
+        setAutorizacionActual(match);
+        if (match.status === "APROBADA") setAutorizacionCredito(match.supervisorInfo);
       }
     }, 1500);
-    return () => clearInterval(intervalo);
   }, [modalAutorizacionAbierto, autorizacionActual]);
 
   const abrirModalAutorizacion = () => {
+    const token = generarTokenAuth();
     const registro = {
-      id: `auth_${Date.now()}`,
-      tokenAuth: generarTokenAuth(),
+      tokenAuth: token,
       cajaId: usuario?.id || "caja_01",
       clienteDocumento: normalizarDocumento(`${formVenta.tipoDocumento}${formVenta.numeroDocumento}`) || "S/D",
       clienteNombre: formVenta.cliente || "Consumidor Final",
@@ -702,10 +676,9 @@ export default function POSPage() {
       status: "PENDIENTE",
       supervisorInfo: null,
     };
-    const actuales = JSON.parse(localStorage.getItem("duna_autorizaciones_credito") || "[]");
-    localStorage.setItem("duna_autorizaciones_credito", JSON.stringify([registro, ...actuales]));
+    guardarDocumento("duna_autorizaciones_credito", token, registro).catch((e) => console.error(e));
     setQrDataUrl("");
-    setAutorizacionActual(registro);
+    setAutorizacionActual({ ...registro, id: token });
     setSegundosRestantes(SEGUNDOS_EXPIRACION_QR);
     setPinEmergenciaAbierto(false);
     setPinEmergenciaInput("");
@@ -848,9 +821,7 @@ export default function POSPage() {
       horaAutorizacion: new Date().toLocaleString("es-VE"),
     };
     if (autorizacionActual) {
-      const actuales = JSON.parse(localStorage.getItem("duna_autorizaciones_credito") || "[]");
-      const actualizadas = actuales.map(a => a.tokenAuth === autorizacionActual.tokenAuth ? { ...a, status: "APROBADA", supervisorInfo } : a);
-      localStorage.setItem("duna_autorizaciones_credito", JSON.stringify(actualizadas));
+      actualizarDocumento("duna_autorizaciones_credito", autorizacionActual.tokenAuth, { status: "APROBADA", supervisorInfo }).catch((e) => console.error(e));
     }
     setAutorizacionCredito(supervisorInfo);
     setPinEmergenciaAbierto(false);

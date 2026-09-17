@@ -2,6 +2,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Check, X, ShieldCheck, Lock, LogOut, Loader2, AlertCircle, Clock } from "lucide-react";
+import { escucharDocumento, actualizarDocumento } from "@/lib/firebase";
 
 const CONFIG_SUPERVISORES_DEFECTO = {
   pinMaestro: "9999",
@@ -52,18 +53,15 @@ function SupervisorPortal() {
       }
     }
 
-    if (token) {
-      try {
-        const registros = JSON.parse(localStorage.getItem("duna_autorizaciones_credito") || "[]");
-        const match = registros.find((r) => r.tokenAuth === token);
-        setSolicitud(match || null);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
     setAhora(Date.now());
-    setCargando(false);
+  }, []);
+
+  // Escucha en tiempo real (Firestore en vivo, o polling local) la solicitud de autorización de este token
+  useEffect(() => {
+    return escucharDocumento("duna_autorizaciones_credito", token, (data) => {
+      setSolicitud(data);
+      setCargando(false);
+    }, 1500);
   }, [token]);
 
   const handleLogin = (e) => {
@@ -98,11 +96,7 @@ function SupervisorPortal() {
       supervisorId: sesion.id,
       horaAutorizacion: new Date().toLocaleString("es-VE"),
     };
-    const registros = JSON.parse(localStorage.getItem("duna_autorizaciones_credito") || "[]");
-    const actualizados = registros.map((r) =>
-      r.tokenAuth === solicitud.tokenAuth ? { ...r, status: nuevoStatus, supervisorInfo } : r
-    );
-    localStorage.setItem("duna_autorizaciones_credito", JSON.stringify(actualizados));
+    actualizarDocumento("duna_autorizaciones_credito", solicitud.tokenAuth, { status: nuevoStatus, supervisorInfo }).catch((e) => console.error(e));
     setSolicitud((prev) => (prev ? { ...prev, status: nuevoStatus, supervisorInfo } : prev));
     setResultadoAccion(nuevoStatus);
   };

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Copy, Check, Camera, Loader2, AlertCircle } from "lucide-react";
 import bancosVenezuela from "@/data/bancosVenezuela";
+import { escucharDocumento, actualizarDocumento } from "@/lib/firebase";
 
 function formatearMontoBs(monto) {
   return (Number(monto) || 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -68,25 +69,25 @@ export default function PagoPublicoPage() {
 
   useEffect(() => {
     try {
-      const pagos = JSON.parse(localStorage.getItem("duna_pagos_pendientes") || "[]");
-      const match = pagos.find((p) => p.token === token);
+      const configGuardada = JSON.parse(localStorage.getItem("duna_config_pagomovil") || "null");
       // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente
-      setPago(match || null);
+      setConfig(configGuardada);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  // Escucha en tiempo real (Firestore en vivo, o polling local) la intención de pago de este token
+  useEffect(() => {
+    return escucharDocumento("duna_pagos_pendientes", token, (match) => {
+      setPago(match);
       if (match && match.status !== "PENDIENTE") {
         setEnviado(true);
         setReferencia(match.referenciaReportada || "");
         setImagenPreview(match.imagenComprobante || "");
       }
-    } catch (e) {
-      console.error(e);
-    }
-    try {
-      const configGuardada = JSON.parse(localStorage.getItem("duna_config_pagomovil") || "null");
-      setConfig(configGuardada);
-    } catch (e) {
-      console.error(e);
-    }
-    setCargando(false);
+      setCargando(false);
+    }, 2000);
   }, [token]);
 
   const bancoReceptorInfo = bancosVenezuela.find((b) => b.codigo === config?.bancoReceptor) || null;
@@ -130,18 +131,14 @@ export default function PagoPublicoPage() {
       return;
     }
 
-    try {
-      const pagos = JSON.parse(localStorage.getItem("duna_pagos_pendientes") || "[]");
-      const actualizados = pagos.map((p) =>
-        p.token === token
-          ? { ...p, status: "REPORTADO", referenciaReportada: refLimpia, imagenComprobante: imagenPreview || null, bancoEmisorReportado: bancoEmisor }
-          : p
-      );
-      localStorage.setItem("duna_pagos_pendientes", JSON.stringify(actualizados));
-      setEnviado(true);
-    } catch (err) {
-      setError("Ocurrió un error al enviar tu comprobante. Intenta nuevamente.");
-    }
+    actualizarDocumento("duna_pagos_pendientes", token, {
+      status: "REPORTADO",
+      referenciaReportada: refLimpia,
+      imagenComprobante: imagenPreview || null,
+      bancoEmisorReportado: bancoEmisor,
+    })
+      .then(() => setEnviado(true))
+      .catch(() => setError("Ocurrió un error al enviar tu comprobante. Intenta nuevamente."));
   };
 
   if (cargando) {
