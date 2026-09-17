@@ -1,7 +1,8 @@
 "use client";
 import React from "react";
-import { MapPin, Coins, RefreshCw } from "lucide-react";
+import { MapPin, Coins, RefreshCw, UserRound } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
+import { useUser, ROLES } from "@/context/UserContext";
 
 const OPCIONES_MODO = [
   { valor: "dual", etiqueta: "Dual ($/Bs)" },
@@ -9,15 +10,43 @@ const OPCIONES_MODO = [
   { valor: "ves", etiqueta: "Bs VES" },
 ];
 
+const ROL_ETIQUETA = {
+  ADMIN: "Admin",
+  VENDEDOR: "Vendedor",
+  CONTADOR: "Contador",
+};
+
 export default function CintilloTop() {
   const { modoMoneda, setModoMoneda, tasaBcv, cargandoTasa, ultimaHora, consultarApiBCV } = useCurrency();
+  const { usuario, cambiarRol } = useUser();
 
   return (
     <div className="sticky top-0 z-50 bg-[#0a0e17] text-slate-300 border-b border-white/5">
       <div className="max-w-7xl mx-auto px-4 sm:px-8 h-9 flex items-center justify-between gap-4 text-[11px]">
-        <div className="flex items-center gap-1.5 font-semibold truncate">
-          <MapPin className="w-3.5 h-3.5 text-[#FE6712] shrink-0" />
-          <span className="truncate">Sede activa: Cabimas, Estado Zulia</span>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-1.5 font-semibold truncate">
+            <MapPin className="w-3.5 h-3.5 text-[#FE6712] shrink-0" />
+            <span className="truncate">Sede activa: Cabimas, Estado Zulia</span>
+          </div>
+
+          {usuario && (
+            <div className="hidden sm:flex items-center gap-1.5 bg-white/5 rounded-full pl-2.5 pr-1.5 py-1 border border-white/10 shrink-0">
+              <UserRound className="w-3.5 h-3.5 text-[#FE6712] shrink-0" />
+              <span className="font-bold text-slate-100 whitespace-nowrap">
+                {ROL_ETIQUETA[usuario.rol] || usuario.rol}: {usuario.nombre}
+              </span>
+              <select
+                value={usuario.rol}
+                onChange={(e) => cambiarRol(e.target.value)}
+                title="Cambiar rol activo (solo pruebas)"
+                className="bg-transparent text-[10px] text-slate-500 hover:text-white focus:outline-none cursor-pointer"
+              >
+                {ROLES.map((r) => (
+                  <option key={r} value={r} className="text-slate-900">{ROL_ETIQUETA[r] || r}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">

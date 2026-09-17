@@ -1,5 +1,6 @@
 ﻿import "./globals.css";
 import { CurrencyProvider } from "@/context/CurrencyContext";
+import { UserProvider } from "@/context/UserContext";
 import CintilloTop from "@/components/CintilloTop";
 
 export const metadata = {
@@ -11,10 +12,12 @@ export default function RootLayout({ children }) {
   return (
     <html lang="es">
       <body className="bg-slate-50 text-slate-900 antialiased">
-        <CurrencyProvider>
-          <CintilloTop />
-          {children}
-        </CurrencyProvider>
+        <UserProvider>
+          <CurrencyProvider>
+            <CintilloTop />
+            {children}
+          </CurrencyProvider>
+        </UserProvider>
       </body>
     </html>
   );
