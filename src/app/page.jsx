@@ -1,11 +1,48 @@
-﻿import React from "react";
+﻿"use client";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { 
-  Layers, Receipt, ShoppingCart, Boxes, PlusCircle, 
+import {
+  Receipt, ShoppingCart, Boxes, PlusCircle,
   Wallet, Truck, CheckCircle2, Sparkles
 } from "lucide-react";
+import { useCurrency } from "@/context/CurrencyContext";
 
 export default function Home() {
+  const { modoMoneda, tasaBcv } = useCurrency();
+
+  const [kpis, setKpis] = useState({
+    porCobrar: 0,
+    clientesConSaldo: 0,
+    cobradoEfectivo: 0,
+    inventarioTotal: 0,
+    articulosRegistrados: 0,
+  });
+
+  useEffect(() => {
+    try {
+      const cuentas = JSON.parse(localStorage.getItem("duna_cxc_records") || "[]");
+      const productos = JSON.parse(localStorage.getItem("duna_inventario_prods") || "[]");
+
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente
+      setKpis({
+        porCobrar: cuentas.reduce((acc, c) => acc + (c.saldo || 0), 0),
+        clientesConSaldo: cuentas.filter(c => (c.saldo || 0) > 0).length,
+        cobradoEfectivo: cuentas.reduce((acc, c) => acc + (c.abonado || 0), 0),
+        inventarioTotal: productos.reduce((acc, p) => acc + (p.price || 0) * (p.stock || 0), 0),
+        articulosRegistrados: productos.length,
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const formatearMonto = (montoUsd) => {
+    const bcv = (montoUsd * tasaBcv).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (modoMoneda === "usd") return `$${montoUsd.toFixed(2)}`;
+    if (modoMoneda === "ves") return `Bs. ${bcv}`;
+    return `$${montoUsd.toFixed(2)} / Bs. ${bcv}`;
+  };
+
   return (
     <div className="min-h-screen bg-slate-50/70 text-slate-800 flex flex-col font-sans">
       
@@ -13,15 +50,11 @@ export default function Home() {
       <header className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#FE6712] flex items-center justify-center font-black text-white shadow-md shadow-orange-500/20 text-lg">
-              D'
-            </div>
-            <div>
-              <div className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                D'UNA <span className="text-[11px] bg-orange-50 text-[#FE6712] px-2.5 py-0.5 rounded-full font-bold border border-orange-200">ADMIN</span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-medium">Plataforma de Gestión Comercial</p>
-            </div>
+            <Link href="/" className="flex items-center gap-2">
+              <img src="/logo-duna-admin.png" alt="D'una Admin" className="h-8 w-auto object-contain" />
+              <span className="text-[11px] bg-orange-50 text-[#FE6712] px-2.5 py-0.5 rounded-full font-bold border border-orange-200">ADMIN</span>
+            </Link>
+            <p className="text-[11px] text-slate-400 font-medium hidden sm:block">Plataforma de Gestión Comercial</p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -62,8 +95,8 @@ export default function Home() {
                 <Wallet className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-slate-900">$0.00</div>
-            <div className="text-xs text-slate-400 mt-1 font-medium">0 clientes con saldo</div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">{formatearMonto(kpis.porCobrar)}</div>
+            <div className="text-xs text-slate-400 mt-1 font-medium">{kpis.clientesConSaldo} clientes con saldo</div>
           </div>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition">
@@ -84,7 +117,7 @@ export default function Home() {
                 <CheckCircle2 className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-slate-900">$0.00</div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">{formatearMonto(kpis.cobradoEfectivo)}</div>
             <div className="text-xs text-slate-400 mt-1 font-medium">Total recaudado</div>
           </div>
 
@@ -95,8 +128,8 @@ export default function Home() {
                 <Boxes className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-slate-900">$0.00</div>
-            <div className="text-xs text-slate-400 mt-1 font-medium">0 artículos registrados</div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">{formatearMonto(kpis.inventarioTotal)}</div>
+            <div className="text-xs text-slate-400 mt-1 font-medium">{kpis.articulosRegistrados} artículos registrados</div>
           </div>
         </div>
 
@@ -121,9 +154,11 @@ export default function Home() {
                   </p>
                 </div>
               </div>
+              <Link href="/cxc">
               <button className="mt-6 w-full py-3 bg-slate-50 hover:bg-emerald-600 text-slate-700 hover:text-white rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 border border-slate-200 hover:border-transparent">
                 <PlusCircle className="w-4 h-4" /> Registrar Primera Venta
               </button>
+              </Link>
             </div>
 
             {/* Módulo CXP */}
