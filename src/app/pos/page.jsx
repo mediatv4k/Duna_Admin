@@ -1,4 +1,4 @@
-�"use client";
+"use client";
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
@@ -582,7 +582,7 @@ export default function POSPage() {
   // Datos y mensaje para el despacho de cobro por Pago Móvil vía WhatsApp
   const bancoReceptorSeleccionado = bancosVenezuela.find(b => b.codigo === formVenta.bancoReceptor) || null;
   const montoPagoMovilUsd = formVenta.condicionVenta === "CONTADO" ? totalFacturaUsd : montoAbonadoUsd;
-  const mensajePagoMovil = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza el Pago Móvil con estos datos:\n�x�� Banco: *${bancoReceptorSeleccionado ? bancoReceptorSeleccionado.display : "(configura el banco receptor)"}*\n�x� Teléfono: *${configPagoMovil.telefonoReceptor || "(sin configurar)"}*\n�x  Cédula/RIF: *${configPagoMovil.rifReceptor || "(sin configurar)"}*\n�x� Titular: *${configPagoMovil.nombreTitular || "(sin configurar)"}*\n�x� Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (�0� $${montoPagoMovilUsd.toFixed(2)} USD)\n\nPor favor responde a este mensaje con la captura del comprobante o el número de referencia para emitir tu factura.`;
+  const mensajePagoMovil = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza el Pago Móvil con estos datos:\n🏦 Banco: *${bancoReceptorSeleccionado ? bancoReceptorSeleccionado.display : "(configura el banco receptor)"}*\n📱 Teléfono: *${configPagoMovil.telefonoReceptor || "(sin configurar)"}*\n🆔 Cédula/RIF: *${configPagoMovil.rifReceptor || "(sin configurar)"}*\n👤 Titular: *${configPagoMovil.nombreTitular || "(sin configurar)"}*\n💰 Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (≈ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nPor favor responde a este mensaje con la captura del comprobante o el número de referencia para emitir tu factura.`;
 
   const handleEnviarDatosPagoMovil = () => {
     const numero = `${(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`;
@@ -620,7 +620,7 @@ export default function POSPage() {
 
     const link = `${obtenerOrigen()}/pago/${token}`;
     const numero = `${(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`;
-    const mensaje = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza tu Pago Móvil desde este link seguro:\n${link}\n\n�x� Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (�0� $${montoPagoMovilUsd.toFixed(2)} USD)\n\nAl confirmar tu pago allí, tu factura queda lista para validarse en caja.`;
+    const mensaje = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza tu Pago Móvil desde este link seguro:\n${link}\n\n💰 Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (≈ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nAl confirmar tu pago allí, tu factura queda lista para validarse en caja.`;
     window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`, "_blank");
   };
 
@@ -1007,7 +1007,7 @@ export default function POSPage() {
     const lineasProductos = (cuenta.renglones || []).map(r => {
       const variantePart = r.variante ? ` (${r.variante})` : "";
       const extrasPart = r.toppings && r.toppings.length > 0 ? ` [Extras: ${r.toppings.map(t => t.nombre).join(", ")}]` : "";
-      return `⬢ ${r.cantidad}x ${r.nombre}${variantePart}${extrasPart} - $${r.subtotal.toFixed(2)}`;
+      return `• ${r.cantidad}x ${r.nombre}${variantePart}${extrasPart} - $${r.subtotal.toFixed(2)}`;
     }).join("\n");
 
     const mensaje = `Estimado(a) *${cuenta.cliente}*, le saludamos de *D'una*. Le compartimos el estado de su cuenta:\n${lineasProductos}\nFactura: *${cuenta.id}* | Total: *$${cuenta.total.toFixed(2)}* | Abonado: *$${cuenta.abonado.toFixed(2)}* | Saldo pendiente: *$${cuenta.saldo.toFixed(2)} USD* (*Bs. ${saldoBs}* a Tasa BCV: Bs. ${tasaBcv}). Quedamos atentos a su comprobante.`;
@@ -1043,7 +1043,7 @@ export default function POSPage() {
               <div className="hidden sm:flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-2xl px-3 py-2">
                 <Wallet className="w-4 h-4 text-emerald-700" />
                 <div className="leading-tight">
-                  <span className="text-[11px] font-black text-emerald-800 block">Turno {turnoActivo.id} � ABIERTO</span>
+                  <span className="text-[11px] font-black text-emerald-800 block">Turno {turnoActivo.id} — ABIERTO</span>
                   <span className="text-[10px] text-emerald-600">Apertura: {turnoActivo.fechaApertura} · {turnoActivo.ventasIds.length} venta(s)</span>
                 </div>
               </div>
@@ -1060,7 +1060,7 @@ export default function POSPage() {
               </button>
             )}
             <Link href="/cxc" className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition whitespace-nowrap">
-              Administración CXC � 
+              Administración CXC →
             </Link>
           </div>
         </div>
@@ -1077,17 +1077,17 @@ export default function POSPage() {
                 <AlertTriangle className="w-4 h-4" />
               </div>
               <p className="text-[12px] font-bold text-slate-700 min-w-0">
-                �a�️ Se detectó una venta en curso no finalizada para{" "}
+                ⚠️ Se detectó una venta en curso no finalizada para{" "}
                 <span className="text-slate-900">{draftDetectado.cliente?.nombre || "Consumidor Final"}</span>
                 {" "}({(draftDetectado.renglonesVenta || []).length} ítem{(draftDetectado.renglonesVenta || []).length === 1 ? "" : "s"} - ${totalBorrador.toFixed(2)}).
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button type="button" onClick={handleRetomarBorrador} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition flex items-center gap-1.5">
-                �x Retomar Venta
+                🔄 Retomar Venta
               </button>
               <button type="button" onClick={handleDescartarBorrador} className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5">
-                �x️ Descartar
+                🗑️ Descartar
               </button>
             </div>
           </div>
@@ -1152,7 +1152,7 @@ export default function POSPage() {
                       {filtrarClientes(formVenta.numeroDocumento).map((cl, i) => (
                         <button key={i} type="button" onMouseDown={() => handleSeleccionarCliente(cl)} className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0">
                           <span className="font-bold text-slate-800 block text-xs">{cl.nombre}</span>
-                          <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} ⬢ {cl.codigoPais}{cl.telefono}</span>
+                          <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} • {cl.codigoPais}{cl.telefono}</span>
                         </button>
                       ))}
                     </div>
@@ -1175,7 +1175,7 @@ export default function POSPage() {
                       {filtrarClientes(formVenta.cliente).map((cl, i) => (
                         <button key={i} type="button" onMouseDown={() => handleSeleccionarCliente(cl)} className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0">
                           <span className="font-bold text-slate-800 block text-xs">{cl.nombre}</span>
-                          <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} ⬢ {cl.codigoPais}{cl.telefono}</span>
+                          <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} • {cl.codigoPais}{cl.telefono}</span>
                         </button>
                       ))}
                     </div>
@@ -1189,7 +1189,7 @@ export default function POSPage() {
                 }`}>
                   {cantidadFacturasPendientes > 0 ? (
                     <>
-                      <span>�a�️ Deuda: ${deudaTotalUsd.toFixed(2)} (~Bs. {deudaTotalBs.toFixed(2)}) ⬢ {cantidadFacturasPendientes} fact.</span>
+                      <span>⚠️ Deuda: ${deudaTotalUsd.toFixed(2)} (~Bs. {deudaTotalBs.toFixed(2)}) • {cantidadFacturasPendientes} fact.</span>
                       <button
                         type="button"
                         onClick={() => setModalAuditoriaAbierto(true)}
@@ -1199,14 +1199,14 @@ export default function POSPage() {
                       </button>
                     </>
                   ) : (
-                    <span>�S Al Día</span>
+                    <span>✓ Al Día</span>
                   )}
                 </div>
               )}
 
               {avisoClienteEnEspera && (
                 <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-sky-700">
-                  <span>�x� Este cliente tiene un ticket en espera de ${avisoClienteEnEspera.total.toFixed(2)}. ¿Deseas retomarlo?</span>
+                  <span>💡 Este cliente tiene un ticket en espera de ${avisoClienteEnEspera.total.toFixed(2)}. ¿Deseas retomarlo?</span>
                   <button
                     type="button"
                     onClick={() => handleRetomarVentaEnEspera(avisoClienteEnEspera)}
@@ -1287,7 +1287,7 @@ export default function POSPage() {
                         <img src={p.image} alt="" className="w-8 h-8 rounded-lg object-cover bg-slate-100 shrink-0" />
                         <div className="min-w-0 flex-1">
                           <span className="font-bold text-slate-800 text-xs block truncate">{p.name}</span>
-                          <span className="text-[10px] text-slate-400">{p.code} ⬢ Stock: {p.stock}</span>
+                          <span className="text-[10px] text-slate-400">{p.code} • Stock: {p.stock}</span>
                         </div>
                         <span className="text-xs font-black text-slate-900 shrink-0">${p.price.toFixed(2)}</span>
                       </button>
@@ -1303,7 +1303,7 @@ export default function POSPage() {
                     href="/inventario"
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition"
                   >
-                    Registrar o importar productos � 
+                    Registrar o importar productos →
                   </Link>
                 </div>
               )}
@@ -1436,7 +1436,7 @@ export default function POSPage() {
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-2">
                           <div className="flex items-center gap-1">
-                            <button type="button" onClick={() => handleDecrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 flex items-center justify-center font-bold">��</button>
+                            <button type="button" onClick={() => handleDecrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 flex items-center justify-center font-bold">−</button>
                             <input
                               type="number"
                               min="1"
@@ -1494,7 +1494,7 @@ export default function POSPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-lg font-black text-slate-900">Cobrar / Finalizar Venta</h3>
-                <p className="text-xs text-slate-400">{formVenta.cliente || "Consumidor Final"} ⬢ Total ${totalFacturaUsd.toFixed(2)}</p>
+                <p className="text-xs text-slate-400">{formVenta.cliente || "Consumidor Final"} • Total ${totalFacturaUsd.toFixed(2)}</p>
               </div>
               <button onClick={() => setModalCobroAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
                 <X className="w-4 h-4" />
@@ -1547,8 +1547,8 @@ export default function POSPage() {
                   {Number(formVenta.montoAbonadoInput) > 0 && (
                     <p className="text-[11px] text-emerald-600 font-bold mt-1.5">
                       {formVenta.monedaAbono === "ves"
-                        ? `�0� $${montoAbonadoUsd.toFixed(2)} USD`
-                        : `�0� Bs. ${formatearBs(montoAbonadoUsd, tasaBcv)}`}
+                        ? `≈ $${montoAbonadoUsd.toFixed(2)} USD`
+                        : `≈ Bs. ${formatearBs(montoAbonadoUsd, tasaBcv)}`}
                     </p>
                   )}
                 </div>
@@ -1617,8 +1617,8 @@ export default function POSPage() {
                             <Check className="w-4 h-4" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <span className="text-[11px] font-black text-emerald-700 block">�S ¡Comprobante reportado por el cliente!</span>
-                            <span className="text-[10px] text-emerald-600">Referencia: {pagoMovilActivo.referenciaReportada || "�"}</span>
+                            <span className="text-[11px] font-black text-emerald-700 block">✓ ¡Comprobante reportado por el cliente!</span>
+                            <span className="text-[10px] text-emerald-600">Referencia: {pagoMovilActivo.referenciaReportada || "—"}</span>
                           </div>
                           {pagoMovilActivo.imagenComprobante && (
                             /* eslint-disable-next-line @next/next/no-img-element -- miniatura Base64 generada por el cliente, incompatible con next/image */
@@ -1631,7 +1631,7 @@ export default function POSPage() {
                           )}
                         </div>
                       ) : tokenPagoActivo ? (
-                        <p className="text-[10px] text-slate-400 text-center">Esperando que el cliente reporte su pago desde el link enviado⬦</p>
+                        <p className="text-[10px] text-slate-400 text-center">Esperando que el cliente reporte su pago desde el link enviado…</p>
                       ) : null}
 
                       <div className="flex flex-col sm:flex-row items-center gap-2">
@@ -1719,7 +1719,7 @@ export default function POSPage() {
                 <p className="text-xs text-slate-500">
                   Por <span className="font-bold text-slate-800">{autorizacionActual.supervisorInfo?.supervisorNombre}</span>
                 </p>
-                <p className="text-[11px] text-slate-400">Continuando con el registro de la factura⬦</p>
+                <p className="text-[11px] text-slate-400">Continuando con el registro de la factura…</p>
               </div>
             ) : autorizacionActual.status === "RECHAZADA" ? (
               <div className="text-center space-y-3 py-2">
@@ -1730,7 +1730,7 @@ export default function POSPage() {
                 <p className="text-xs text-slate-500">El supervisor rechazó esta venta a crédito desde su teléfono.</p>
                 <div className="flex flex-col gap-2 pt-2">
                   <button type="button" onClick={abrirModalAutorizacion} className="w-full px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition">
-                    �x Solicitar de Nuevo
+                    🔄 Solicitar de Nuevo
                   </button>
                   <button type="button" onClick={handlePausarPorAutorizacion} className="w-full px-3 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-bold transition">
                     ⏸ Pausar y Mandar a Administración
@@ -1746,7 +1746,7 @@ export default function POSPage() {
                 <p className="text-xs text-slate-500">El supervisor no escaneó el código a tiempo.</p>
                 <div className="flex flex-col gap-2 pt-2">
                   <button type="button" onClick={abrirModalAutorizacion} className="w-full px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition">
-                    �x Regenerar QR
+                    🔄 Regenerar QR
                   </button>
                   <button type="button" onClick={handlePausarPorAutorizacion} className="w-full px-3 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-bold transition">
                     ⏸ Pausar y Mandar a Administración
@@ -1783,7 +1783,7 @@ export default function POSPage() {
                       maxLength={4}
                       value={pinEmergenciaInput}
                       onChange={(e) => setPinEmergenciaInput(e.target.value.replace(/\D/g, ""))}
-                      placeholder="⬢⬢⬢⬢"
+                      placeholder="••••"
                       autoFocus
                       className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-center tracking-[0.3em] text-slate-800 focus:outline-none focus:border-[#FE6712]"
                     />
@@ -1809,7 +1809,7 @@ export default function POSPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-lg font-black text-slate-900">Auditoría de Deuda</h3>
-                <p className="text-xs text-slate-400">{clienteCoincidenteActual.nombre} ⬢ {clienteCoincidenteActual.documento}</p>
+                <p className="text-xs text-slate-400">{clienteCoincidenteActual.nombre} • {clienteCoincidenteActual.documento}</p>
               </div>
               <button onClick={() => setModalAuditoriaAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
                 <X className="w-4 h-4" />
@@ -2046,7 +2046,7 @@ export default function POSPage() {
                       <tr key={v.id} className="hover:bg-slate-50/50 transition">
                         <td className="p-3 font-bold text-slate-800">{v.cliente?.nombre || "Consumidor Final"}</td>
                         <td className="p-3 text-slate-500">
-                          {v.cliente?.tipoDocumento || ""}{v.cliente?.numeroDocumento || "�"}
+                          {v.cliente?.tipoDocumento || ""}{v.cliente?.numeroDocumento || "—"}
                         </td>
                         <td className="p-3 text-slate-600">{(v.renglonesVenta || []).length}</td>
                         <td className="p-3 font-black text-slate-900">${v.total.toFixed(2)}</td>
