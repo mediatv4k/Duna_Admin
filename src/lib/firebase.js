@@ -6,10 +6,13 @@
 // sistema sigue funcionando 100% offline/local sin romper nada.
 
 import { initializeApp, getApps } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import {
   getFirestore,
   doc,
   collection,
+  query,
+  where,
   setDoc,
   getDocs,
   updateDoc,
@@ -33,10 +36,29 @@ export const firebaseHabilitado = Boolean(
 
 let app = null;
 export let db = null;
+export let auth = null;
 
 if (firebaseHabilitado) {
   app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
   db = getFirestore(app);
+  auth = getAuth(app);
+}
+
+// --- Partición multi-tenant (empresa_id) ---
+//
+// Las colecciones compartidas (productos, clientes, proveedores, etc.) se filtran
+// y se etiquetan automáticamente con la empresa activa de la sesión, para que
+// ningún comercio pueda leer ni escribir datos de otro. AuthContext llama a
+// setEmpresaActiva() en cuanto resuelve el perfil del usuario autenticado.
+
+let empresaActivaId = null;
+
+export function setEmpresaActiva(id) {
+  empresaActivaId = id || null;
+}
+
+export function getEmpresaActiva() {
+  return empresaActivaId;
 }
 
 // --- Fallback local (colección = array JSON bajo una sola clave de localStorage) ---
@@ -65,7 +87,10 @@ function escribirColeccionLocal(nombre, items) {
  */
 export function escucharColeccion(nombre, onCambio, intervaloMs = 1500) {
   if (firebaseHabilitado) {
-    return onSnapshot(collection(db, nombre), (snap) => {
+    const ref = empresaActivaId
+      ? query(collection(db, nombre), where("empresa_id", "==", empresaActivaId))
+      : collection(db, nombre);
+    return onSnapshot(ref, (snap) => {
       onCambio(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
   }
@@ -115,20 +140,24 @@ export function escucharDocumento(nombre, id, onCambio, intervaloMs = 1500) {
 /** Trae una colección completa una sola vez (sin listener). Firebase: getDocs. Local: lectura directa. */
 export async function obtenerColeccion(nombre) {
   if (firebaseHabilitado) {
-    const snap = await getDocs(collection(db, nombre));
+    const ref = empresaActivaId
+      ? query(collection(db, nombre), where("empresa_id", "==", empresaActivaId))
+      : collection(db, nombre);
+    const snap = await getDocs(ref);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   }
   return leerColeccionLocal(nombre);
 }
 
-/** Crea o reemplaza un documento (upsert) por id, en Firestore y en el espejo local. */
+/** Crea o reemplaza un documento (upsert) por id, en Firestore y en el espejo local. Adjunta la empresa activa automáticamente. */
 export async function guardarDocumento(nombre, id, datos) {
-  const item = { ...datos, id };
+  const datosFinal = empresaActivaId ? { ...datos, empresa_id: empresaActivaId } : datos;
+  const item = { ...datosFinal, id };
   const items = leerColeccionLocal(nombre);
   const idx = items.findIndex((it) => it.id === id);
   escribirColeccionLocal(nombre, idx >= 0 ? items.map((it, i) => (i === idx ? item : it)) : [item, ...items]);
   if (firebaseHabilitado) {
-    await setDoc(doc(db, nombre, id), datos);
+    await setDoc(doc(db, nombre, id), datosFinal);
   }
 }
 

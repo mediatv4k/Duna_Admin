@@ -1,9 +1,11 @@
-﻿import "./globals.css";
+import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
 import { CurrencyProvider } from "@/context/CurrencyContext";
 import { UserProvider } from "@/context/UserContext";
 import { BusinessProfileProvider } from "@/context/BusinessProfileContext";
 import CintilloTop from "@/components/CintilloTop";
 import ManualDrawer from "@/components/ManualDrawer";
+import AuthGate from "@/components/AuthGate";
 
 export const metadata = {
   title: "D'una Admin - Plataforma de Gestión Comercial",
@@ -14,15 +16,17 @@ export default function RootLayout({ children }) {
   return (
     <html lang="es">
       <body className="bg-slate-50 text-slate-900 antialiased">
-        <UserProvider>
-          <BusinessProfileProvider>
-            <CurrencyProvider>
-              <CintilloTop />
-              {children}
-              <ManualDrawer />
-            </CurrencyProvider>
-          </BusinessProfileProvider>
-        </UserProvider>
+        <AuthProvider>
+          <UserProvider>
+            <BusinessProfileProvider>
+              <CurrencyProvider>
+                <CintilloTop />
+                <AuthGate>{children}</AuthGate>
+                <ManualDrawer />
+              </CurrencyProvider>
+            </BusinessProfileProvider>
+          </UserProvider>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -2,10 +2,11 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MapPin, Coins, RefreshCw, UserRound, Store, Wallet, Zap } from "lucide-react";
+import { MapPin, Coins, RefreshCw, UserRound, Store, Wallet, Zap, LogOut } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser, ROLES } from "@/context/UserContext";
 import { useBusinessProfile, PERFILES_NEGOCIO } from "@/context/BusinessProfileContext";
+import { useAuth } from "@/context/AuthContext";
 
 const OPCIONES_MODO = [
   { valor: "dual", etiqueta: "Dual ($/Bs)" },
@@ -31,9 +32,10 @@ export default function CintilloTop() {
   const { modoMoneda, setModoMoneda, tasaBcv, cargandoTasa, ultimaHora, consultarApiBCV } = useCurrency();
   const { usuario, cambiarRol } = useUser();
   const { perfil, setPerfil } = useBusinessProfile();
+  const { perfil: perfilAuth, logout } = useAuth();
 
-  // Portal público de autoservicio / portal móvil del supervisor: sin chrome administrativo
-  if (pathname?.startsWith("/pago/") || pathname?.startsWith("/supervisor")) return null;
+  // Portal público de autoservicio / portal móvil del supervisor / pantalla de acceso: sin chrome administrativo
+  if (pathname?.startsWith("/pago/") || pathname?.startsWith("/supervisor") || pathname === "/login") return null;
 
   return (
     <div className="sticky top-0 z-50 bg-[#0a0e17] text-slate-300 border-b border-white/5">
@@ -134,6 +136,18 @@ export default function CintilloTop() {
               <RefreshCw className={`w-3 h-3 ${cargandoTasa ? "animate-spin" : ""}`} />
             </button>
           </div>
+
+          {perfilAuth && (
+            <button
+              type="button"
+              onClick={logout}
+              title={`Cerrar sesión (${perfilAuth.nombre})`}
+              className="hidden md:flex items-center gap-1.5 bg-white/5 hover:bg-white/10 rounded-full pl-2.5 pr-2 py-1 border border-white/10 hover:border-rose-400 transition shrink-0"
+            >
+              <span className="font-bold text-slate-300 whitespace-nowrap max-w-[110px] truncate">{perfilAuth.nombre}</span>
+              <LogOut className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            </button>
+          )}
         </div>
       </div>
     </div>
