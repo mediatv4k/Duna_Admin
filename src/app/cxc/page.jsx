@@ -238,13 +238,13 @@ export default function CXCPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800">
 
       {/* 1. Estructura de Panel Dividido: Barra Lateral Izquierda Fija */}
-      <aside className="w-full md:w-64 bg-slate-900 text-slate-300 flex flex-col p-4 border-r border-slate-800 shrink-0 md:h-screen md:sticky md:top-0">
+      <aside className="w-full md:w-64 bg-white text-slate-700 flex flex-col p-4 border-r border-slate-200 shadow-sm shrink-0 md:h-screen md:sticky md:top-0">
 
         {/* Encabezado superior con identificador del sistema */}
-        <div className="pb-4 pt-1 border-b border-slate-800/80">
+        <div className="pb-4 pt-1 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#FE6712] shadow-sm shadow-[#FE6712]/60 inline-block shrink-0" />
-            <span className="text-xs font-black tracking-wider text-white uppercase">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#FE6712] shadow-sm shadow-[#FE6712]/50 inline-block shrink-0" />
+            <span className="text-xs font-black tracking-wider text-slate-900 uppercase">
               D&apos;UNA ADMIN / CXC
             </span>
           </div>
@@ -258,10 +258,10 @@ export default function CXCPage() {
           <button
             type="button"
             onClick={() => setVistaActiva("cartera")}
-            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-between ${
+            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs transition-all flex items-center justify-between ${
               vistaActiva === "cartera"
-                ? "bg-slate-800 text-white border-l-4 border-[#FE6712] shadow-sm"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                ? "bg-orange-50 text-[#FE6712] font-bold border-l-4 border-[#FE6712]"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 font-medium"
             }`}
           >
             <span className="flex items-center gap-2.5">
@@ -269,7 +269,7 @@ export default function CXCPage() {
               <span>Cartera y Saldos</span>
             </span>
             {cuentas.length > 0 && (
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-700/60 text-slate-300 border border-slate-600/50">
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-bold border border-slate-200">
                 {cuentas.length}
               </span>
             )}
@@ -278,13 +278,13 @@ export default function CXCPage() {
           <button
             type="button"
             onClick={() => setMostrarModalReporte(true)}
-            className="w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-slate-400 hover:text-white hover:bg-slate-800/50 group"
+            className="w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-between text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 group"
           >
             <span className="flex items-center gap-2.5">
               <span className="text-sm">📊</span>
               <span>Reporte e Historial</span>
             </span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#FE6712]/20 text-[#FE6712] font-semibold group-hover:bg-[#FE6712] group-hover:text-white transition">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100/70 text-[#FE6712] font-semibold group-hover:bg-[#FE6712] group-hover:text-white transition">
               Abrir
             </span>
           </button>
@@ -292,10 +292,10 @@ export default function CXCPage() {
           <button
             type="button"
             onClick={() => setVistaActiva("clientes")}
-            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-between ${
+            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs transition-all flex items-center justify-between ${
               vistaActiva === "clientes"
-                ? "bg-slate-800 text-white border-l-4 border-[#FE6712] shadow-sm"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                ? "bg-orange-50 text-[#FE6712] font-bold border-l-4 border-[#FE6712]"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 font-medium"
             }`}
           >
             <span className="flex items-center gap-2.5">
@@ -303,7 +303,7 @@ export default function CXCPage() {
               <span>Clientes Deudores</span>
             </span>
             {clientesDeudores.length > 0 && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold">
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-bold border border-slate-200">
                 {clientesDeudores.length}
               </span>
             )}
@@ -311,16 +311,16 @@ export default function CXCPage() {
         </nav>
 
         {/* Enlace inferior para saltar al mostrador */}
-        <div className="mt-auto pt-4 border-t border-slate-800 space-y-2">
+        <div className="mt-auto pt-4 border-t border-slate-100 space-y-2">
           <Link
             href="/pos"
-            className="w-full py-2.5 px-3 rounded-xl bg-[#FE6712]/15 hover:bg-[#FE6712] text-[#FE6712] hover:text-white border border-[#FE6712]/30 hover:border-transparent text-xs font-bold transition flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-3 rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-sm text-xs font-bold transition flex items-center justify-center gap-2"
           >
             <span>← Terminal POS</span>
           </Link>
           <Link
             href="/"
-            className="w-full py-2 px-3 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 text-[11px] font-medium transition flex items-center justify-center gap-1.5"
+            className="w-full py-2 px-3 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100/80 text-[11px] font-medium transition flex items-center justify-center gap-1.5"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Volver al Inicio
           </Link>
@@ -369,7 +369,7 @@ export default function CXCPage() {
 
           {/* Métricas rápidas en tarjetas horizontales compactas */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total por Cobrar</span>
                 <span className="w-2 h-2 rounded-full bg-rose-500" />
@@ -382,7 +382,7 @@ export default function CXCPage() {
               </p>
             </div>
 
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Facturas Pendientes</span>
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
@@ -398,7 +398,7 @@ export default function CXCPage() {
               </p>
             </div>
 
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Recaudado</span>
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -708,25 +708,25 @@ export default function CXCPage() {
 
       {/* Modal Reporte e Historial de Facturas */}
       {mostrarModalReporte && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-6xl w-full max-h-[90vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-100 p-5 shrink-0">
+            <div className="flex items-center justify-between border-b border-slate-200 p-5 shrink-0 bg-white">
               <div>
                 <h3 className="text-lg font-black text-slate-900">Reporte e Historial de Facturas</h3>
-                <p className="text-xs text-slate-400">Cartera completa de créditos y cobranzas</p>
+                <p className="text-xs text-slate-500">Cartera completa de créditos y cobranzas</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200"
                 >
                   <Printer className="w-4 h-4" /> Imprimir
                 </button>
                 <button
                   type="button"
                   onClick={() => setMostrarModalReporte(false)}
-                  className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition shrink-0"
+                  className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200 flex items-center justify-center transition shrink-0"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -864,12 +864,12 @@ export default function CXCPage() {
       {modalAbonoAbierto && cuentaAbonoActual && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 bg-white">
               <div>
                 <h3 className="text-lg font-black text-slate-900">Registrar Abono</h3>
-                <p className="text-xs text-slate-400">Factura {cuentaAbonoActual.id} • {cuentaAbonoActual.cliente}</p>
+                <p className="text-xs text-slate-500">Factura {cuentaAbonoActual.id} • {cuentaAbonoActual.cliente}</p>
               </div>
-              <button onClick={() => setModalAbonoAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
+              <button onClick={() => setModalAbonoAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200 flex items-center justify-center transition">
                 <X className="w-4 h-4" />
               </button>
             </div>
