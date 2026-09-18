@@ -14,20 +14,6 @@ import { useUser } from "@/context/UserContext";
 import bancosVenezuela from "@/data/bancosVenezuela";
 import { escucharColeccion, escucharDocumento, guardarDocumento, actualizarDocumento, eliminarDocumento } from "@/lib/firebase";
 
-const PAISES = [
-  { code: "+58", name: "Venezuela" },
-  { code: "+57", name: "Colombia" },
-  { code: "+56", name: "Chile" },
-  { code: "+593", name: "Ecuador" },
-  { code: "+1", name: "USA/Canadá" },
-  { code: "+34", name: "España" },
-  { code: "+507", name: "Panamá" },
-  { code: "+51", name: "Perú" },
-  { code: "+54", name: "Argentina" },
-  { code: "+52", name: "México" },
-  { code: "+55", name: "Brasil" },
-];
-
 const METODOS_PAGO = [
   "Efectivo USD",
   "Efectivo Bs",
@@ -39,8 +25,6 @@ const METODOS_PAGO = [
 ];
 
 const METODOS_CON_REFERENCIA = ["Pago Móvil", "Transf. Mismo Banco", "Transf. Interbancaria"];
-
-const TIPOS_DOCUMENTO = ["V-", "J-", "E-", "G-", "P-"];
 
 const FORM_VENTA_INICIAL = {
   cliente: "",
@@ -488,13 +472,14 @@ export default function POSPage() {
   const productoSeleccionado = productosInventario.find(p => p.id === itemActual.productoId) || null;
   const esGastronomiaConVariantes = productoSeleccionado?.nicho === "Gastronomía & Heladería" && (productoSeleccionado.variantes || []).length > 0;
 
+  // Buscador predictivo limpio: si está vacío, no se muestra ningún catálogo previo
   const productosFiltradosCombo = (busquedaProducto
     ? productosInventario.filter(p =>
         p.name.toLowerCase().includes(busquedaProducto.toLowerCase()) ||
         p.code.toLowerCase().includes(busquedaProducto.toLowerCase()) ||
         (p.barcode || "").toLowerCase().includes(busquedaProducto.toLowerCase())
       )
-    : productosInventario
+    : []
   ).slice(0, 8);
 
   const handleSeleccionarProducto = (prod) => {
@@ -1190,377 +1175,305 @@ export default function POSPage() {
         </div>
       </header>
 
-      {/* Espacio de Trabajo Inmersivo */}
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6 flex-1 w-full">
+      {/* Ventana Flotante / Modal Express Centrada */}
+      <main className="flex-1 w-full flex flex-col items-center gap-3 p-4 sm:p-8">
 
         {/* Banner de Recuperación de Borrador (crash recovery) */}
         {draftDetectado && (
-          <div className="mb-5 rounded-3xl border border-amber-300 bg-gradient-to-r from-amber-50 to-emerald-50 p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+          <div className="w-full max-w-4xl rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50 to-emerald-50 p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-9 h-9 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-4 h-4" />
               </div>
-              <p className="text-[12px] font-bold text-slate-700 min-w-0">
-                ⚠️ Se detectó una venta en curso no finalizada para{" "}
+              <p className="text-[11px] font-bold text-slate-700 min-w-0">
+                ⚠️ Venta en curso no finalizada para{" "}
                 <span className="text-slate-900">{draftDetectado.cliente?.nombre || "Consumidor Final"}</span>
                 {" "}({(draftDetectado.renglonesVenta || []).length} ítem{(draftDetectado.renglonesVenta || []).length === 1 ? "" : "s"} - ${totalBorrador.toFixed(2)}).
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <button type="button" onClick={handleRetomarBorrador} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition flex items-center gap-1.5">
-                🔄 Retomar Venta
+              <button type="button" onClick={handleRetomarBorrador} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition">
+                🔄 Retomar
               </button>
-              <button type="button" onClick={handleDescartarBorrador} className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5">
+              <button type="button" onClick={handleDescartarBorrador} className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-[11px] font-bold transition">
                 🗑️ Descartar
               </button>
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-6 items-start">
+        {/* Barra de utilidades: Ventas en Espera */}
+        <div className="w-full max-w-4xl flex items-center justify-end">
+          <button
+            type="button"
+            onClick={() => setModalEsperaAbierto(true)}
+            disabled={ventasEnEspera.length === 0}
+            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-bold transition disabled:opacity-40 disabled:pointer-events-none"
+          >
+            ⏸ En Espera ({ventasEnEspera.length})
+          </button>
+        </div>
 
-          {/* Columna Izquierda / Central: Cliente + Producto */}
-          <div className="space-y-5 min-w-0">
+        {/* Ventana Flotante: Blanco Limpio y Elegante */}
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl p-6 flex flex-col gap-4 text-slate-800">
 
-            {/* Cliente rápido */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-              <h3 className="text-xs font-black text-slate-700 uppercase tracking-wide">Cliente</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative">
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1 flex items-center justify-between">
-                    <span>Cédula / RIF *</span>
-                    {clienteCoincidenteActual ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-600">
-                        <ShieldCheck className="w-3 h-3" /> Cliente Registrado
-                      </span>
-                    ) : documentoBloqueado && (
-                      <button type="button" onClick={handleDesbloquearDocumento} className="text-[10px] font-bold text-slate-400 hover:text-[#FE6712] underline">
-                        Cambiar
-                      </button>
-                    )}
-                  </label>
-                  <div className={`flex items-stretch border rounded-xl overflow-hidden focus-within:border-[#FE6712] ${
-                    errorDocumento
-                      ? "bg-rose-50 border-rose-400"
-                      : clienteCoincidenteActual || documentoBloqueado
-                      ? "bg-emerald-50 border-emerald-300"
-                      : "bg-slate-50 border-slate-200"
-                  }`}>
-                    <select
-                      value={formVenta.tipoDocumento}
-                      disabled={documentoBloqueado}
-                      onChange={(e) => setFormVenta({ ...formVenta, tipoDocumento: e.target.value })}
-                      className="px-2 bg-black/5 border-r border-slate-200 text-xs font-bold text-slate-700 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {TIPOS_DOCUMENTO.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      minLength={5}
-                      readOnly={documentoBloqueado}
-                      value={formVenta.numeroDocumento}
-                      onChange={(e) => handleCambiarNumeroDocumento(e.target.value)}
-                      onFocus={() => setCampoActivoSugerencia("documento")}
-                      onBlur={() => setTimeout(() => setCampoActivoSugerencia(null), 150)}
-                      placeholder="10089073"
-                      autoComplete="off"
-                      className={`flex-1 min-w-0 px-3 py-2 bg-transparent text-xs text-slate-800 focus:outline-none ${documentoBloqueado ? "cursor-not-allowed" : ""}`}
-                    />
-                  </div>
-                  {errorDocumento && (
-                    <p className="text-[10px] text-rose-600 font-bold mt-1">La Cédula o RIF es obligatoria para emitir la factura.</p>
-                  )}
-                  {campoActivoSugerencia === "documento" && filtrarClientes(formVenta.numeroDocumento).length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
-                      {filtrarClientes(formVenta.numeroDocumento).map((cl, i) => (
-                        <button key={i} type="button" onMouseDown={() => handleSeleccionarCliente(cl)} className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0">
-                          <span className="font-bold text-slate-800 block text-xs">{cl.nombre}</span>
-                          <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} • {cl.codigoPais}{cl.telefono}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+          {/* Cabecera Horizontal en una sola línea */}
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <span className="bg-orange-50 text-[#FE6712] font-mono font-bold px-3 py-1.5 rounded-lg text-xs shrink-0">
+              {numeroTicketActual}
+            </span>
+
+            <div className="relative w-32 shrink-0">
+              <input
+                type="text"
+                inputMode="numeric"
+                readOnly={documentoBloqueado}
+                value={formVenta.numeroDocumento}
+                onChange={(e) => handleCambiarNumeroDocumento(e.target.value)}
+                onFocus={() => setCampoActivoSugerencia("documento")}
+                onBlur={() => setTimeout(() => setCampoActivoSugerencia(null), 150)}
+                placeholder="Cédula/RIF"
+                autoComplete="off"
+                className={`w-32 border rounded-lg pl-3 pr-6 py-1.5 text-xs font-medium focus:outline-none focus:border-[#FE6712] ${
+                  errorDocumento
+                    ? "bg-rose-50 border-rose-400"
+                    : clienteCoincidenteActual || documentoBloqueado
+                    ? "bg-emerald-50 border-emerald-300"
+                    : "bg-slate-50 border-slate-200"
+                } ${documentoBloqueado ? "cursor-not-allowed" : ""}`}
+              />
+              {documentoBloqueado && (
+                <button
+                  type="button"
+                  onClick={handleDesbloquearDocumento}
+                  title="Cambiar cliente"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#FE6712]"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {campoActivoSugerencia === "documento" && filtrarClientes(formVenta.numeroDocumento).length > 0 && (
+                <div className="absolute z-10 mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                  {filtrarClientes(formVenta.numeroDocumento).map((cl, i) => (
+                    <button key={i} type="button" onMouseDown={() => handleSeleccionarCliente(cl)} className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0">
+                      <span className="font-bold text-slate-800 block text-xs">{cl.nombre}</span>
+                      <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} • {cl.codigoPais}{cl.telefono}</span>
+                    </button>
+                  ))}
                 </div>
-                <div className="relative">
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Nombre del Cliente *</label>
-                  <input
-                    type="text"
-                    value={formVenta.cliente}
-                    onChange={(e) => setFormVenta({ ...formVenta, cliente: e.target.value })}
-                    onFocus={() => setCampoActivoSugerencia("cliente")}
-                    onBlur={() => setTimeout(() => setCampoActivoSugerencia(null), 150)}
-                    placeholder="Ej: Inversiones ABC"
-                    autoComplete="off"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
-                  />
-                  {campoActivoSugerencia === "cliente" && filtrarClientes(formVenta.cliente).length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
-                      {filtrarClientes(formVenta.cliente).map((cl, i) => (
-                        <button key={i} type="button" onMouseDown={() => handleSeleccionarCliente(cl)} className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0">
-                          <span className="font-bold text-slate-800 block text-xs">{cl.nombre}</span>
-                          <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} • {cl.codigoPais}{cl.telefono}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+              )}
+            </div>
+
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={formVenta.cliente}
+                onChange={(e) => setFormVenta({ ...formVenta, cliente: e.target.value })}
+                onFocus={() => setCampoActivoSugerencia("cliente")}
+                onBlur={() => setTimeout(() => setCampoActivoSugerencia(null), 150)}
+                placeholder="Nombre del Cliente"
+                autoComplete="off"
+                className="w-full flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-medium placeholder:text-slate-400 focus:outline-none focus:border-[#FE6712]"
+              />
+              {campoActivoSugerencia === "cliente" && filtrarClientes(formVenta.cliente).length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                  {filtrarClientes(formVenta.cliente).map((cl, i) => (
+                    <button key={i} type="button" onMouseDown={() => handleSeleccionarCliente(cl)} className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0">
+                      <span className="font-bold text-slate-800 block text-xs">{cl.nombre}</span>
+                      <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} • {cl.codigoPais}{cl.telefono}</span>
+                    </button>
+                  ))}
                 </div>
+              )}
+            </div>
+
+            <input
+              type="tel"
+              value={formVenta.telefono}
+              onChange={(e) => setFormVenta({ ...formVenta, telefono: e.target.value })}
+              placeholder="Teléfono / WhatsApp"
+              autoComplete="off"
+              className="w-36 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none focus:border-[#FE6712] shrink-0"
+            />
+          </div>
+
+          {/* Avisos compactos: deuda del cliente detectado y ticket en espera */}
+          {errorDocumento && (
+            <p className="text-[10px] text-rose-600 font-bold -mt-2">La Cédula o RIF es obligatoria para emitir la factura.</p>
+          )}
+          {clienteCoincidenteActual && cantidadFacturasPendientes > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-amber-700 -mt-1">
+              <span>⚠️ Deuda: ${deudaTotalUsd.toFixed(2)} (~Bs. {deudaTotalBs.toFixed(2)}) • {cantidadFacturasPendientes} fact.</span>
+              <button
+                type="button"
+                onClick={() => setModalAuditoriaAbierto(true)}
+                className="px-2.5 py-1 bg-white border border-amber-300 rounded-lg text-[10px] font-black text-amber-700 hover:bg-amber-100 transition shrink-0"
+              >
+                Ver / Cobrar Facturas
+              </button>
+            </div>
+          )}
+          {avisoClienteEnEspera && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-sky-700 -mt-1">
+              <span>💡 Este cliente tiene un ticket en espera de ${avisoClienteEnEspera.total.toFixed(2)}. ¿Deseas retomarlo?</span>
+              <button
+                type="button"
+                onClick={() => handleRetomarVentaEnEspera(avisoClienteEnEspera)}
+                className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-[10px] font-black transition shrink-0"
+              >
+                Sí, retomar
+              </button>
+            </div>
+          )}
+
+          {/* Buscador Predictivo Limpio (sin catálogo previo visible) */}
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={inputProductoRef}
+              type="text"
+              value={busquedaProducto}
+              onChange={(e) => { setBusquedaProducto(e.target.value); setMostrarSugerenciasProducto(true); }}
+              onFocus={() => setMostrarSugerenciasProducto(true)}
+              onBlur={() => setTimeout(() => setMostrarSugerenciasProducto(false), 150)}
+              onKeyDown={handleBusquedaProductoKeyDown}
+              placeholder="Escanear código de barras o buscar producto..."
+              autoComplete="off"
+              autoFocus
+              className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 focus:outline-none focus:border-[#FE6712] focus:ring-2 focus:ring-orange-100 transition"
+            />
+            {mostrarSugerenciasProducto && busquedaProducto && productosFiltradosCombo.length > 0 && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                {productosFiltradosCombo.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onMouseDown={() => handleAgregarProductoDirecto(p)}
+                    className="w-full flex items-center gap-2.5 text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- miniatura dinámica (Base64/URL arbitraria), incompatible con next/image sin configurar dominios */}
+                    <img src={p.image} alt="" className="w-8 h-8 rounded-lg object-cover bg-slate-100 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <span className="font-bold text-slate-800 text-xs block truncate">{p.name}</span>
+                      <span className="text-[10px] text-slate-400">{p.code} • Stock: {p.stock}</span>
+                    </div>
+                    <span className="text-xs font-black text-slate-900 shrink-0">${p.price.toFixed(2)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {productosInventario.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-center space-y-1.5">
+              <p className="text-[11px] font-bold text-amber-700">Aún no hay productos registrados en el catálogo.</p>
+              <Link
+                href="/inventario"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-lg text-[11px] font-bold transition"
+              >
+                Registrar o importar productos →
+              </Link>
+            </div>
+          )}
+
+          {productoSeleccionado && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3">
+              <div className="text-[11px] font-bold text-slate-700">
+                Configurando: <span className="text-[#FE6712]">{productoSeleccionado.name}</span>
               </div>
 
-              {clienteCoincidenteActual && (
-                <div className={`rounded-xl border px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold ${
-                  cantidadFacturasPendientes > 0 ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"
-                }`}>
-                  {cantidadFacturasPendientes > 0 ? (
-                    <>
-                      <span>⚠️ Deuda: ${deudaTotalUsd.toFixed(2)} (~Bs. {deudaTotalBs.toFixed(2)}) • {cantidadFacturasPendientes} fact.</span>
-                      <button
-                        type="button"
-                        onClick={() => setModalAuditoriaAbierto(true)}
-                        className="px-2.5 py-1 bg-white border border-amber-300 rounded-lg text-[10px] font-black text-amber-700 hover:bg-amber-100 transition shrink-0"
-                      >
-                        Ver / Cobrar Facturas
-                      </button>
-                    </>
-                  ) : (
-                    <span>✓ Al Día</span>
-                  )}
-                </div>
-              )}
-
-              {avisoClienteEnEspera && (
-                <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-sky-700">
-                  <span>💡 Este cliente tiene un ticket en espera de ${avisoClienteEnEspera.total.toFixed(2)}. ¿Deseas retomarlo?</span>
-                  <button
-                    type="button"
-                    onClick={() => handleRetomarVentaEnEspera(avisoClienteEnEspera)}
-                    className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-[10px] font-black transition shrink-0"
-                  >
-                    Sí, retomar
-                  </button>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-3">
+              {esGastronomiaConVariantes && (
                 <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Código País</label>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Sabor / Variante *</label>
                   <select
-                    value={formVenta.paisCodigo}
-                    onChange={(e) => setFormVenta({ ...formVenta, paisCodigo: e.target.value })}
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                    required
+                    value={itemActual.varianteNombre}
+                    onChange={(e) => setItemActual(prev => ({ ...prev, varianteNombre: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
                   >
-                    {PAISES.map(p => (
-                      <option key={p.code} value={p.code}>{p.code} {p.name}</option>
+                    <option value="">Seleccionar sabor...</option>
+                    {productoSeleccionado.variantes.map(v => (
+                      <option key={v.nombre} value={v.nombre}>{v.nombre} (Stock: {v.stock})</option>
                     ))}
                   </select>
                 </div>
-                <div className="col-span-2">
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Teléfono (WhatsApp)</label>
-                  <input
-                    type="tel"
-                    value={formVenta.telefono}
-                    onChange={(e) => setFormVenta({ ...formVenta, telefono: e.target.value })}
-                    placeholder="4121234567"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
-                  />
-                </div>
-              </div>
+              )}
 
-              <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">Dirección</label>
-                <input
-                  type="text"
-                  value={formVenta.direccion}
-                  onChange={(e) => setFormVenta({ ...formVenta, direccion: e.target.value })}
-                  placeholder="Dirección de entrega o fiscal"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
-                />
-              </div>
-            </div>
-
-            {/* Producto / Código de Barras */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-              <h3 className="text-xs font-black text-slate-700 uppercase tracking-wide">Producto</h3>
-              <div className="relative">
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                  <input
-                    ref={inputProductoRef}
-                    type="text"
-                    value={busquedaProducto}
-                    onChange={(e) => { setBusquedaProducto(e.target.value); setMostrarSugerenciasProducto(true); }}
-                    onFocus={() => setMostrarSugerenciasProducto(true)}
-                    onBlur={() => setTimeout(() => setMostrarSugerenciasProducto(false), 150)}
-                    onKeyDown={handleBusquedaProductoKeyDown}
-                    placeholder="Escanear código de barras o buscar por nombre / SKU..."
-                    autoComplete="off"
-                    autoFocus
-                    className="w-full pl-9 pr-3 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#FE6712]"
-                  />
-                </div>
-                {mostrarSugerenciasProducto && productosFiltradosCombo.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
-                    {productosFiltradosCombo.map(p => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onMouseDown={() => handleSeleccionarProducto(p)}
-                        className="w-full flex items-center gap-2.5 text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- miniatura dinámica (Base64/URL arbitraria), incompatible con next/image sin configurar dominios */}
-                        <img src={p.image} alt="" className="w-8 h-8 rounded-lg object-cover bg-slate-100 shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <span className="font-bold text-slate-800 text-xs block truncate">{p.name}</span>
-                          <span className="text-[10px] text-slate-400">{p.code} • Stock: {p.stock}</span>
-                        </div>
-                        <span className="text-xs font-black text-slate-900 shrink-0">${p.price.toFixed(2)}</span>
-                      </button>
-                    ))}
+              {productoSeleccionado.toppings?.length > 0 && (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1.5">Toppings / Modificadores</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {productoSeleccionado.toppings.map(t => {
+                      const activo = itemActual.toppingsSeleccionadosIds.includes(t.id);
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => handleToggleTopping(t)}
+                          className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition ${
+                            activo
+                              ? "bg-[#FE6712] text-white border-[#FE6712] shadow-sm"
+                              : "bg-white text-slate-600 border-slate-200 hover:border-[#FE6712] hover:text-[#FE6712]"
+                          }`}
+                        >
+                          {t.nombre} {Number(t.precioExtra) > 0 ? `(+$${Number(t.precioExtra).toFixed(2)})` : "(Gratis)"}
+                        </button>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
-
-              {productosInventario.length === 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-2">
-                  <p className="text-[11px] font-bold text-amber-700">Aún no hay productos registrados en el catálogo.</p>
-                  <Link
-                    href="/inventario"
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition"
-                  >
-                    Registrar o importar productos →
-                  </Link>
                 </div>
               )}
 
-              {productoSeleccionado && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-3">
-                  <div className="text-[11px] font-bold text-slate-700">
-                    Configurando: <span className="text-[#FE6712]">{productoSeleccionado.name}</span>
-                  </div>
-
-                  {esGastronomiaConVariantes && (
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Sabor / Variante *</label>
-                      <select
-                        required
-                        value={itemActual.varianteNombre}
-                        onChange={(e) => setItemActual(prev => ({ ...prev, varianteNombre: e.target.value }))}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
-                      >
-                        <option value="">Seleccionar sabor...</option>
-                        {productoSeleccionado.variantes.map(v => (
-                          <option key={v.nombre} value={v.nombre}>{v.nombre} (Stock: {v.stock})</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {productoSeleccionado.toppings?.length > 0 && (
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1.5">Toppings / Modificadores</label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {productoSeleccionado.toppings.map(t => {
-                          const activo = itemActual.toppingsSeleccionadosIds.includes(t.id);
-                          return (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => handleToggleTopping(t)}
-                              className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition ${
-                                activo
-                                  ? "bg-[#FE6712] text-white border-[#FE6712] shadow-sm"
-                                  : "bg-white text-slate-600 border-slate-200 hover:border-[#FE6712] hover:text-[#FE6712]"
-                              }`}
-                            >
-                              {t.nombre} {Number(t.precioExtra) > 0 ? `(+$${Number(t.precioExtra).toFixed(2)})` : "(Gratis)"}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-3 gap-3 items-end">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Cantidad</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={itemActual.cantidad}
-                        onChange={(e) => setItemActual(prev => ({ ...prev, cantidad: Number(e.target.value) || 1 }))}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FE6712]"
-                      />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-500 block mb-1">Subtotal</span>
-                      <span className="block px-3 py-2 text-xs font-black text-slate-900">${subtotalActual.toFixed(2)}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAgregarAlTicket}
-                      className="px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Agregar al Ticket
-                    </button>
-                  </div>
+              <div className="grid grid-cols-3 gap-3 items-end">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Cantidad</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={itemActual.cantidad}
+                    onChange={(e) => setItemActual(prev => ({ ...prev, cantidad: Number(e.target.value) || 1 }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                  />
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Columna Derecha: Ticket Permanente */}
-          <div className="lg:sticky lg:top-[110px] space-y-4">
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col max-h-[calc(100vh-140px)]">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-2">
-                <h3 className="text-sm font-black text-slate-900">Ticket de Venta</h3>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setModalEsperaAbierto(true)}
-                    disabled={ventasEnEspera.length === 0}
-                    className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-bold transition disabled:opacity-40 disabled:pointer-events-none"
-                  >
-                    ⏸ En Espera ({ventasEnEspera.length})
-                  </button>
-                  <button
-                    onClick={handleLimpiarTicket}
-                    title="Vaciar ticket y empezar de nuevo"
-                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-500 block mb-1">Subtotal</span>
+                  <span className="block px-3 py-2 text-xs font-black text-slate-900">${subtotalActual.toFixed(2)}</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleAgregarAlTicket}
+                  className="px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Agregar al Ticket
+                </button>
               </div>
+            </div>
+          )}
 
-              <div className="flex-1 overflow-y-auto p-4">
-                {renglonesVenta.length === 0 ? (
-                  <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center">
-                    <p className="text-[11px] text-slate-400">Escanee un código de barras o busque un producto para iniciar el ticket.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
+          {/* Ticket de Venta Integrado */}
+          <div className="border border-slate-200 rounded-xl overflow-hidden">
+            {renglonesVenta.length === 0 ? (
+              <div className="p-6 text-center">
+                <p className="text-[11px] text-slate-400">Escanee un código de barras o busque un producto para iniciar el ticket.</p>
+              </div>
+            ) : (
+              <div className="max-h-[36vh] overflow-y-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] sticky top-0">
+                    <tr>
+                      <th className="p-3">Cantidad</th>
+                      <th className="p-3">Descripción</th>
+                      <th className="p-3">P. Unitario</th>
+                      <th className="p-3">Subtotal</th>
+                      <th className="p-3 text-right">Quitar</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
                     {renglonesVenta.map(r => (
-                      <div key={r.tempId} className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <span className="font-bold text-slate-800 text-xs block truncate">{r.nombre}</span>
-                            {(r.variante || r.toppings.length > 0) && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {r.variante && (
-                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px] font-bold">{r.variante}</span>
-                                )}
-                                {r.toppings.map(t => (
-                                  <span key={t.id} className="px-1.5 py-0.5 rounded bg-orange-50 text-[#FE6712] text-[9px] font-bold">{t.nombre}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <button type="button" onClick={() => handleEliminarRenglon(r.tempId)} className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition shrink-0">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 mt-2">
+                      <tr key={r.tempId} className="hover:bg-slate-50/60 transition">
+                        <td className="p-3">
                           <div className="flex items-center gap-1">
-                            <button type="button" onClick={() => handleDecrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 flex items-center justify-center font-bold">−</button>
+                            <button type="button" onClick={() => handleDecrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold shrink-0">−</button>
                             <input
                               type="number"
                               min="1"
@@ -1568,45 +1481,77 @@ export default function POSPage() {
                               onChange={(e) => handleActualizarCantidadRenglon(r.tempId, e.target.value)}
                               className="w-10 text-center px-1 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-bold"
                             />
-                            <button type="button" onClick={() => handleIncrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 flex items-center justify-center font-bold">+</button>
+                            <button type="button" onClick={() => handleIncrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold shrink-0">+</button>
                           </div>
-                          <span className="text-xs font-black text-slate-900">${r.subtotal.toFixed(2)}</span>
-                        </div>
-                      </div>
+                        </td>
+                        <td className="p-3">
+                          <span className="font-bold text-slate-800 block">{r.nombre}</span>
+                          {(r.variante || r.toppings.length > 0) && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {r.variante && (
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px] font-bold">{r.variante}</span>
+                              )}
+                              {r.toppings.map(t => (
+                                <span key={t.id} className="px-1.5 py-0.5 rounded bg-orange-50 text-[#FE6712] text-[9px] font-bold">{t.nombre}</span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-3 text-slate-600">${r.precioUnitario.toFixed(2)}</td>
+                        <td className="p-3">
+                          <span className="font-black text-slate-900 block">${r.subtotal.toFixed(2)}</span>
+                          <span className="text-[10px] text-emerald-600 font-bold">Bs. {formatearBs(r.subtotal, tasaBcv)}</span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <button type="button" onClick={() => handleEliminarRenglon(r.tempId)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
                     ))}
-                  </div>
-                )}
+                  </tbody>
+                </table>
               </div>
-
-              <div className="p-4 border-t border-slate-100 bg-slate-50/60 space-y-3">
-                <div className="text-center">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total a Cobrar</span>
-                  <div className="text-3xl font-black text-slate-900">${totalFacturaUsd.toFixed(2)}</div>
-                  <div className="text-sm font-bold text-emerald-600">Bs. {formatearBs(totalFacturaUsd, tasaBcv)}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handlePonerEnEspera}
-                    disabled={renglonesVenta.length === 0}
-                    title={renglonesVenta.length === 0 ? "Agrega al menos un producto al ticket" : "Pausar esta venta y liberar el mostrador"}
-                    className="px-3 py-3 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none shrink-0"
-                  >
-                    <PauseCircle className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModalCobroAbierto(true)}
-                    disabled={renglonesVenta.length === 0}
-                    className="flex-1 px-4 py-3 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-sm font-black transition flex items-center justify-center gap-2 shadow-sm shadow-orange-500/20 disabled:opacity-40 disabled:pointer-events-none"
-                  >
-                    <CreditCard className="w-4 h-4" /> COBRAR / FINALIZAR VENTA
-                  </button>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
+          {/* Pie del Ticket */}
+          <div className="flex items-center justify-between gap-4 pt-2 border-t border-slate-100">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total</span>
+              <div className="text-2xl font-black text-slate-900">
+                ${totalFacturaUsd.toFixed(2)}
+                <span className="text-sm font-bold text-emerald-600 ml-2">Bs. {formatearBs(totalFacturaUsd, tasaBcv)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePonerEnEspera}
+                disabled={renglonesVenta.length === 0}
+                title={renglonesVenta.length === 0 ? "Agrega al menos un producto al ticket" : "Pausar esta venta y liberar el mostrador"}
+                className="w-10 h-10 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl transition flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none shrink-0"
+              >
+                <PauseCircle className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleLimpiarTicket}
+                title="Vaciar ticket y empezar de nuevo"
+                className="w-10 h-10 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 rounded-xl transition flex items-center justify-center shrink-0"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmarVentaDirecta}
+                disabled={renglonesVenta.length === 0}
+                className="px-6 py-3 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-sm font-black transition flex items-center justify-center gap-2 shadow-sm shadow-orange-500/20 disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <CreditCard className="w-4 h-4" /> Confirmar Venta / Cobrar
+              </button>
+            </div>
+          </div>
         </div>
       </main>
 

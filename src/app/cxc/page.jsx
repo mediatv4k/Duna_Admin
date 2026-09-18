@@ -238,17 +238,17 @@ export default function CXCPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800">
 
       {/* 1. Estructura de Panel Dividido: Barra Lateral Izquierda Fija */}
-      <aside className="w-full md:w-64 bg-white text-slate-700 flex flex-col p-4 border-r border-slate-200 shadow-sm shrink-0 md:h-screen md:sticky md:top-0">
+      <aside className="w-full md:w-64 bg-slate-900 text-slate-300 flex flex-col p-4 border-r border-slate-800 shrink-0 md:h-screen md:sticky md:top-0">
 
         {/* Encabezado superior con identificador del sistema */}
-        <div className="pb-4 pt-1 border-b border-slate-100">
+        <div className="pb-4 pt-1 border-b border-slate-800">
           <div className="flex items-center gap-2.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#FE6712] shadow-sm shadow-[#FE6712]/50 inline-block shrink-0" />
-            <span className="text-xs font-black tracking-wider text-slate-900 uppercase">
+            <span className="text-xs font-black tracking-wider text-white uppercase">
               D&apos;UNA ADMIN / CXC
             </span>
           </div>
-          <p className="text-[10px] text-slate-400 mt-1 pl-5 font-medium">
+          <p className="text-[10px] text-slate-500 mt-1 pl-5 font-medium">
             Gestión de Cartera y Cobranzas
           </p>
         </div>
@@ -260,8 +260,8 @@ export default function CXCPage() {
             onClick={() => setVistaActiva("cartera")}
             className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs transition-all flex items-center justify-between ${
               vistaActiva === "cartera"
-                ? "bg-orange-50 text-[#FE6712] font-bold border-l-4 border-[#FE6712]"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 font-medium"
+                ? "bg-[#FE6712]/10 text-white font-bold border-l-4 border-[#FE6712]"
+                : "text-slate-300 hover:text-white hover:bg-white/5 font-medium"
             }`}
           >
             <span className="flex items-center gap-2.5">
@@ -269,7 +269,7 @@ export default function CXCPage() {
               <span>Cartera y Saldos</span>
             </span>
             {cuentas.length > 0 && (
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-bold border border-slate-200">
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/10 text-slate-300 font-bold border border-white/10">
                 {cuentas.length}
               </span>
             )}
@@ -278,13 +278,13 @@ export default function CXCPage() {
           <button
             type="button"
             onClick={() => setMostrarModalReporte(true)}
-            className="w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-between text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 group"
+            className="w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-between text-slate-300 hover:text-white hover:bg-white/5 group"
           >
             <span className="flex items-center gap-2.5">
               <span className="text-sm">📊</span>
               <span>Reporte e Historial</span>
             </span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100/70 text-[#FE6712] font-semibold group-hover:bg-[#FE6712] group-hover:text-white transition">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-[#FE6712] font-semibold group-hover:bg-[#FE6712] group-hover:text-white transition">
               Abrir
             </span>
           </button>
@@ -294,8 +294,8 @@ export default function CXCPage() {
             onClick={() => setVistaActiva("clientes")}
             className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs transition-all flex items-center justify-between ${
               vistaActiva === "clientes"
-                ? "bg-orange-50 text-[#FE6712] font-bold border-l-4 border-[#FE6712]"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 font-medium"
+                ? "bg-[#FE6712]/10 text-white font-bold border-l-4 border-[#FE6712]"
+                : "text-slate-300 hover:text-white hover:bg-white/5 font-medium"
             }`}
           >
             <span className="flex items-center gap-2.5">
@@ -303,7 +303,7 @@ export default function CXCPage() {
               <span>Clientes Deudores</span>
             </span>
             {clientesDeudores.length > 0 && (
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-bold border border-slate-200">
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/10 text-slate-300 font-bold border border-white/10">
                 {clientesDeudores.length}
               </span>
             )}
@@ -311,16 +311,16 @@ export default function CXCPage() {
         </nav>
 
         {/* Enlace inferior para saltar al mostrador */}
-        <div className="mt-auto pt-4 border-t border-slate-100 space-y-2">
+        <div className="mt-auto pt-4 border-t border-slate-800 space-y-2">
           <Link
             href="/pos"
-            className="w-full py-2.5 px-3 rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-sm text-xs font-bold transition flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-3 rounded-xl bg-white border border-white text-slate-900 hover:bg-slate-100 shadow-sm text-xs font-bold transition flex items-center justify-center gap-2"
           >
             <span>← Terminal POS</span>
           </Link>
           <Link
             href="/"
-            className="w-full py-2 px-3 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100/80 text-[11px] font-medium transition flex items-center justify-center gap-1.5"
+            className="w-full py-2 px-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 text-[11px] font-medium transition flex items-center justify-center gap-1.5"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Volver al Inicio
           </Link>
