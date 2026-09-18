@@ -1,4 +1,5 @@
 "use client";
+import TicketTermicoModal from '@/components/TicketTermicoModal';
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
@@ -126,6 +127,34 @@ function extraerPrefijo(raw) {
 }
 
 export default function POSPage() {
+  // ESTADO TICKET TERMICO Y REIMPRESION
+  const [modalTicketAbierto, setModalTicketAbierto] = React.useState(false);
+  const [datosUltimoTicket, setDatosUltimoTicket] = React.useState(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('duna_ultimo_ticket') : null;
+      return saved ? JSON.parse(saved) : null;
+    } catch(e) { return null; }
+  });
+
+  const abrirTicket = (ventaData) => {
+    const ticketData = ventaData || datosUltimoTicket || {
+      numeroTicket: 'FAC-' + Math.floor(1000 + Math.random() * 9000),
+      fecha: new Date().toISOString(),
+      cliente: { nombre: 'Consumidor Final', cedula: 'V-00000000' },
+      items: [{ nombre: 'Venta Mostrador', cantidad: 1, precio: 10 }],
+      totalUSD: 10,
+      tasa: 45.50,
+      totalBs: 455,
+      metodoPago: 'Efectivo',
+      cajero: 'Omar Soto'
+    };
+    setDatosUltimoTicket(ticketData);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('duna_ultimo_ticket', JSON.stringify(ticketData));
+    }
+    setModalTicketAbierto(true);
+  };
+
   const { tasaBcv } = useCurrency();
   const { usuario } = useUser();
 
@@ -1051,7 +1080,8 @@ export default function POSPage() {
               <span className="hidden sm:inline text-[11px] text-slate-400 font-semibold">Sin turno de caja abierto</span>
             )}
             {turnoActivo ? (
-              <button onClick={handleCerrarTurno} className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition">
+              <button type="button" onClick={() => abrirTicket()} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#FE6712] hover:bg-[#e0580a] text-white flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">📋 Reimprimir Ticket</button>
+          <button onClick={handleCerrarTurno} className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition">
                 Cerrar Turno / Arqueo
               </button>
             ) : (
@@ -2089,6 +2119,14 @@ export default function POSPage() {
         </div>
       )}
 
-    </div>
+    
+      {/* MODAL IMPRESION TICKET TERMICO */}
+      <TicketTermicoModal 
+        isOpen={modalTicketAbierto} 
+        onClose={() => setModalTicketAbierto(false)} 
+        venta={datosUltimoTicket}
+        empresa={{ nombre: "D'UNA MARKET", sede: "Sede Cabimas, Zulia", rif: "J-50123456-7", telefono: "0412-1234567" }}
+      />
+  </div>
   );
 }
