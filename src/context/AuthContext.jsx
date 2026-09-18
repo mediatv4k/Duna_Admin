@@ -20,7 +20,7 @@ const USUARIO_SEMILLA = {
   sede: "Cabimas Matriz",
 };
 
-const PASSWORD_SEMILLA = "Duna2024!";
+const PASSWORD_SEMILLA = "admin123";
 
 const AuthContext = createContext(null);
 

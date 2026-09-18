@@ -23,7 +23,9 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setEnviando(true);
-    const resultado = await login(email.trim(), password);
+    // Atajo de acceso rápido: escribir solo "admin" autocompleta el correo del usuario semilla
+    const correoFinal = email.trim().toLowerCase() === "admin" ? "admin@duna.com" : email.trim();
+    const resultado = await login(correoFinal, password);
     setEnviando(false);
     if (!resultado.ok) {
       setError(resultado.error || "No se pudo iniciar sesión.");
@@ -58,11 +60,11 @@ export default function LoginPage() {
             <div className="relative">
               <Mail className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
               <input
-                type="email"
+                type="text"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tucorreo@duna.com"
+                placeholder="admin"
                 autoComplete="email"
                 autoFocus
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-[#FE6712]"
@@ -79,7 +81,7 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="admin123"
                 autoComplete="current-password"
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-[#FE6712]"
               />
@@ -92,6 +94,10 @@ export default function LoginPage() {
               <span>{error}</span>
             </div>
           )}
+
+          <p className="text-center text-[10px] text-slate-400 font-medium">
+            Usuario: <span className="font-bold text-slate-600">admin</span> · Clave: <span className="font-bold text-slate-600">admin123</span>
+          </p>
 
           <button
             type="submit"
