@@ -2,6 +2,7 @@
 import TicketTermicoModal from '@/components/TicketTermicoModal';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowLeft, Search, Plus, Check, X,
   Trash2, MessageCircle, ShieldCheck, Wallet, Copy, Settings, Smartphone,
@@ -1217,31 +1218,81 @@ export default function POSPage() {
         {/* Ventana Flotante: Blanco Limpio y Elegante */}
         <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl p-6 flex flex-col gap-4 text-slate-800">
 
-          {/* Cabecera Horizontal en una sola línea */}
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
-            <span className="bg-orange-50 text-[#FE6712] font-mono font-bold px-3 py-1.5 rounded-lg text-xs shrink-0">
-              {numeroTicketActual}
-            </span>
+          {/* ===== Micro-Cabecera Corporativa en 2 Niveles ===== */}
 
-            <div className="relative w-32 shrink-0">
-              <input
-                type="text"
-                inputMode="numeric"
-                readOnly={documentoBloqueado}
-                value={formVenta.numeroDocumento}
-                onChange={(e) => handleCambiarNumeroDocumento(e.target.value)}
-                onFocus={() => setCampoActivoSugerencia("documento")}
-                onBlur={() => setTimeout(() => setCampoActivoSugerencia(null), 150)}
-                placeholder="Cédula/RIF"
-                autoComplete="off"
-                className={`w-32 border rounded-lg pl-3 pr-6 py-1.5 text-xs font-medium focus:outline-none focus:border-[#FE6712] ${
+          {/* Nivel Superior: Marca y Control */}
+          <div className="flex items-center justify-between gap-3">
+            <Image
+              src="/duna-pos.png"
+              alt="Duna POS"
+              width={112}
+              height={28}
+              priority
+              className="h-7 w-auto object-contain shrink-0"
+            />
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="bg-orange-50 text-[#FE6712] font-mono font-bold px-3 py-1.5 rounded-lg text-xs">
+                {numeroTicketActual}
+              </span>
+              {turnoActivo ? (
+                <span className="hidden sm:flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1.5 rounded-lg text-[11px] font-bold">
+                  <Wallet className="w-3.5 h-3.5" />
+                  Turno {turnoActivo.id}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setModalTurnoAbierto(true)}
+                  className="hidden sm:flex items-center gap-1.5 bg-slate-50 text-slate-500 border border-slate-200 px-2.5 py-1.5 rounded-lg text-[11px] font-bold hover:border-[#FE6712] hover:text-[#FE6712] transition"
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  Sin turno
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Nivel Inferior: Fila Fiscal y Contacto del Cliente */}
+          <div className="flex flex-wrap items-stretch gap-2">
+
+            {/* Selector Fiscal Obligatorio + Documento */}
+            <div className="relative shrink-0">
+              <div
+                className={`flex items-stretch border rounded-lg overflow-hidden ${
                   errorDocumento
                     ? "bg-rose-50 border-rose-400"
                     : clienteCoincidenteActual || documentoBloqueado
                     ? "bg-emerald-50 border-emerald-300"
                     : "bg-slate-50 border-slate-200"
-                } ${documentoBloqueado ? "cursor-not-allowed" : ""}`}
-              />
+                } focus-within:border-[#FE6712]`}
+              >
+                <select
+                  value={formVenta.tipoDocumento || "V-"}
+                  onChange={(e) => setFormVenta({ ...formVenta, tipoDocumento: e.target.value })}
+                  className="bg-black/5 border-r border-slate-200 text-xs font-bold text-slate-700 pl-2 pr-1 rounded-l-lg focus:outline-none cursor-pointer"
+                  title="Tipo de documento fiscal"
+                >
+                  <option value="V-">V</option>
+                  <option value="J-">J</option>
+                  <option value="E-">E</option>
+                  <option value="G-">G</option>
+                  <option value="P-">P</option>
+                </select>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  readOnly={documentoBloqueado}
+                  value={formVenta.numeroDocumento}
+                  onChange={(e) => handleCambiarNumeroDocumento(e.target.value)}
+                  onFocus={() => setCampoActivoSugerencia("documento")}
+                  onBlur={() => setTimeout(() => setCampoActivoSugerencia(null), 150)}
+                  placeholder="Cédula/RIF"
+                  autoComplete="off"
+                  className={`w-28 bg-transparent pr-6 pl-2.5 py-1.5 text-xs font-medium placeholder:text-slate-400 focus:outline-none ${
+                    documentoBloqueado ? "cursor-not-allowed" : ""
+                  }`}
+                />
+              </div>
               {documentoBloqueado && (
                 <button
                   type="button"
@@ -1264,16 +1315,17 @@ export default function POSPage() {
               )}
             </div>
 
-            <div className="relative flex-1">
+            {/* Nombre / Razón Social (ancho flexible) */}
+            <div className="relative flex-1 min-w-[160px]">
               <input
                 type="text"
                 value={formVenta.cliente}
                 onChange={(e) => setFormVenta({ ...formVenta, cliente: e.target.value })}
                 onFocus={() => setCampoActivoSugerencia("cliente")}
                 onBlur={() => setTimeout(() => setCampoActivoSugerencia(null), 150)}
-                placeholder="Nombre del Cliente"
+                placeholder="Nombre / Razón Social"
                 autoComplete="off"
-                className="w-full flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-medium placeholder:text-slate-400 focus:outline-none focus:border-[#FE6712]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-medium placeholder:text-slate-400 focus:outline-none focus:border-[#FE6712]"
               />
               {campoActivoSugerencia === "cliente" && filtrarClientes(formVenta.cliente).length > 0 && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
@@ -1287,14 +1339,33 @@ export default function POSPage() {
               )}
             </div>
 
-            <input
-              type="tel"
-              value={formVenta.telefono}
-              onChange={(e) => setFormVenta({ ...formVenta, telefono: e.target.value })}
-              placeholder="Teléfono / WhatsApp"
-              autoComplete="off"
-              className="w-36 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none focus:border-[#FE6712] shrink-0"
-            />
+            {/* Teléfono con Código de País */}
+            <div className="flex items-stretch bg-slate-50 border border-slate-200 rounded-lg overflow-hidden focus-within:border-[#FE6712] shrink-0">
+              <select
+                value={formVenta.paisCodigo || "+58"}
+                onChange={(e) => setFormVenta({ ...formVenta, paisCodigo: e.target.value })}
+                className="bg-black/5 border-r border-slate-200 text-xs font-bold text-slate-700 pl-2 pr-1 rounded-l-lg focus:outline-none cursor-pointer"
+                title="Código de país"
+              >
+                <option value="+58">+58</option>
+                <option value="+57">+57</option>
+                <option value="+1">+1</option>
+                <option value="+34">+34</option>
+                <option value="+51">+51</option>
+                <option value="+52">+52</option>
+                <option value="+54">+54</option>
+                <option value="+56">+56</option>
+                <option value="+593">+593</option>
+              </select>
+              <input
+                type="tel"
+                value={formVenta.telefono}
+                onChange={(e) => setFormVenta({ ...formVenta, telefono: e.target.value })}
+                placeholder="Teléfono / WhatsApp"
+                autoComplete="off"
+                className="w-28 bg-transparent px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none"
+              />
+            </div>
           </div>
 
           {/* Avisos compactos: deuda del cliente detectado y ticket en espera */}
