@@ -193,6 +193,7 @@ export default function POSPage() {
   const [busquedaProducto, setBusquedaProducto] = useState("");
   const [mostrarSugerenciasProducto, setMostrarSugerenciasProducto] = useState(false);
   const inputProductoRef = useRef(null);
+  const inputDocumentoRef = useRef(null);
 
   const [modalCobroAbierto, setModalCobroAbierto] = useState(false);
   const [modalAuditoriaAbierto, setModalAuditoriaAbierto] = useState(false);
@@ -279,7 +280,7 @@ export default function POSPage() {
       }
     }
 
-    inputProductoRef.current?.focus();
+    inputDocumentoRef.current?.focus();
   }, []);
 
   // Sincronización en tiempo real con Firestore (colección "duna_productos"); sin variables de entorno,
@@ -864,7 +865,7 @@ export default function POSPage() {
     localStorage.removeItem("duna_pos_draft");
     setDraftDetectado(null);
     setNumeroTicketActual(`FAC-${Date.now().toString().slice(-6)}`);
-    inputProductoRef.current?.focus();
+    inputDocumentoRef.current?.focus();
   };
 
   // Tras el check verde de aprobación: continúa la facturación automáticamente
@@ -1009,7 +1010,7 @@ export default function POSPage() {
     setTokenPagoActivo(null);
     setAvisoClienteEnEspera(null);
     setNumeroTicketActual(`FAC-${Date.now().toString().slice(-6)}`);
-    inputProductoRef.current?.focus();
+    inputDocumentoRef.current?.focus();
   };
 
   // --- Borrador de recuperación (crash recovery) ---
@@ -1083,7 +1084,7 @@ export default function POSPage() {
     setAvisoClienteEnEspera(null);
     localStorage.removeItem("duna_pos_draft");
     setDraftDetectado(null);
-    inputProductoRef.current?.focus();
+    inputDocumentoRef.current?.focus();
 
     alert("Venta guardada en espera");
   };
@@ -1284,11 +1285,18 @@ export default function POSPage() {
                   <option value="P-">P</option>
                 </select>
                 <input
+                  ref={inputDocumentoRef}
                   type="text"
                   inputMode="numeric"
                   readOnly={documentoBloqueado}
                   value={formVenta.numeroDocumento}
                   onChange={(e) => handleCambiarNumeroDocumento(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      inputProductoRef.current?.focus();
+                    }
+                  }}
                   onFocus={() => setCampoActivoSugerencia("documento")}
                   onBlur={() => setTimeout(() => setCampoActivoSugerencia(null), 150)}
                   placeholder="Cédula/RIF"
@@ -1425,7 +1433,6 @@ export default function POSPage() {
               onKeyDown={handleBusquedaProductoKeyDown}
               placeholder="Escanear código de barras o buscar producto..."
               autoComplete="off"
-              autoFocus
               className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 focus:outline-none focus:border-[#FE6712] focus:ring-2 focus:ring-orange-100 transition"
             />
             {mostrarSugerenciasProducto && busquedaProducto && productosFiltradosCombo.length > 0 && (
