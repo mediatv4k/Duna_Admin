@@ -14,6 +14,7 @@ import { useCurrency } from "@/context/CurrencyContext";
 import { useUser } from "@/context/UserContext";
 import bancosVenezuela from "@/data/bancosVenezuela";
 import { escucharColeccion, escucharDocumento, guardarDocumento, actualizarDocumento, eliminarDocumento } from "@/lib/firebase";
+import { enviarVentaAdonisPickup } from "@/services/adonisPosSync";
 
 const METODOS_PAGO = [
   "Efectivo USD",
@@ -881,6 +882,27 @@ export default function POSPage() {
     }
 
     actualizarCuentas([nuevaCuenta, ...cuentas]);
+
+    // Sincronización en segundo plano con Adonis (solo productos de su catálogo); nunca bloquea la caja
+    enviarVentaAdonisPickup(
+      {
+        clienteNombre: formVenta.cliente.trim(),
+        clienteTelefono: formVenta.telefono ? `${formVenta.paisCodigo.replace("+", "")}${limpiarTelefono(formVenta.telefono)}` : "",
+        clienteCedula: documentoFinal,
+        totalUsd: totalFacturaUsd,
+        totalBs: totalFacturaUsd * tasaTicket,
+      },
+      renglonesVenta.map(r => ({
+        id: r.productoId,
+        codigo: r.codigo,
+        nombre: r.nombre,
+        cantidad: r.cantidad,
+        precio_usd: r.precioUnitario,
+      }))
+    )
+      .then((resultado) => console.log("Adonis PICKUP:", resultado))
+      .catch((err) => console.warn("Adonis PICKUP no disponible:", err));
+
     setModalCobroAbierto(false);
     setModalAutorizacionAbierto(false);
     setAutorizacionActual(null);
