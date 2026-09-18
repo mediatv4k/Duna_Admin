@@ -940,6 +940,11 @@ export default function POSPage() {
 
   // Confirmación de venta directa de alta velocidad con apertura de ticket térmico
   const handleConfirmarVentaDirecta = () => {
+    if (!formVenta.numeroDocumento.trim() || !formVenta.cliente.trim()) {
+      setErrorDocumento(true);
+      alert("Debe ingresar la Cédula/RIF del cliente para facturar");
+      return;
+    }
     if (renglonesVenta.length === 0) {
       alert("Agrega al menos un producto al ticket antes de confirmar la venta.");
       return;
@@ -1368,6 +1373,16 @@ export default function POSPage() {
             </div>
           </div>
 
+          {/* Domicilio Fiscal del Cliente */}
+          <input
+            type="text"
+            value={formVenta.direccion}
+            onChange={(e) => setFormVenta({ ...formVenta, direccion: e.target.value })}
+            placeholder="📍 Dirección / Domicilio Fiscal del Cliente (Obligatorio)..."
+            autoComplete="off"
+            className="w-full text-xs py-1.5 px-3 rounded border border-slate-200 bg-white placeholder:text-slate-400 focus:outline-none focus:border-[#FE6712]"
+          />
+
           {/* Avisos compactos: deuda del cliente detectado y ticket en espera */}
           {errorDocumento && (
             <p className="text-[10px] text-rose-600 font-bold -mt-2">La Cédula o RIF es obligatoria para emitir la factura.</p>
@@ -1616,8 +1631,8 @@ export default function POSPage() {
               <button
                 type="button"
                 onClick={handleConfirmarVentaDirecta}
-                disabled={renglonesVenta.length === 0}
-                className="px-6 py-3 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-sm font-black transition flex items-center justify-center gap-2 shadow-sm shadow-orange-500/20 disabled:opacity-40 disabled:pointer-events-none"
+                disabled={renglonesVenta.length === 0 || !formVenta.numeroDocumento.trim() || !formVenta.cliente.trim()}
+                className="px-6 py-3 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-sm font-black transition flex items-center justify-center gap-2 shadow-sm shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
               >
                 <CreditCard className="w-4 h-4" /> Confirmar Venta / Cobrar
               </button>
