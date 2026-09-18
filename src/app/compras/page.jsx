@@ -6,6 +6,7 @@ import {
   Truck, Package, FileText
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
+import { escucharColeccion, guardarDocumento } from "@/lib/firebase";
 
 const TIPOS_DOCUMENTO_PROVEEDOR = ["J-", "G-", "V-", "E-"];
 const OPCIONES_DIAS_CREDITO = [0, 7, 15, 30, 45, 60];
@@ -95,15 +96,6 @@ export default function ComprasPage() {
       }
     }
 
-    const provs = localStorage.getItem("duna_proveedores");
-    if (provs) {
-      try {
-        setProveedores(JSON.parse(provs));
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
     const comprs = localStorage.getItem("duna_compras");
     if (comprs) {
       try {
@@ -123,9 +115,17 @@ export default function ComprasPage() {
     }
   }, []);
 
+  // Sincronización en tiempo real con Firestore (colección "duna_proveedores"); sin variables de entorno,
+  // degrada suavemente a localStorage.
+  useEffect(() => {
+    return escucharColeccion("duna_proveedores", setProveedores);
+  }, []);
+
   const actualizarProveedores = (nuevos) => {
     setProveedores(nuevos);
-    localStorage.setItem("duna_proveedores", JSON.stringify(nuevos));
+    nuevos.forEach((p) => {
+      guardarDocumento("duna_proveedores", p.id, p).catch((e) => console.error(e));
+    });
   };
 
   // --- Directorio de Proveedores ---

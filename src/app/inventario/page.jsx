@@ -11,7 +11,6 @@ import {
 import { useCurrency } from "@/context/CurrencyContext";
 import { useBusinessProfile } from "@/context/BusinessProfileContext";
 import { escucharColeccion, guardarDocumento, eliminarDocumento } from "@/lib/firebase";
-import CATALOGO_SEMILLA from "@/data/catalogoSemilla";
 
 const NICHOS = [
   "General",
@@ -192,14 +191,16 @@ export default function InventarioPage() {
   const [productoJsonActual, setProductoJsonActual] = useState(null);
 
   // Sincronización en tiempo real con Firestore (colección "duna_productos"); sin variables de entorno,
-  // degrada suavemente a localStorage. Si la colección está vacía, siembra el catálogo de demostración.
+  // degrada suavemente a localStorage.
   useEffect(() => {
     return escucharColeccion("duna_productos", (items) => {
-      if (items.length === 0) {
-        CATALOGO_SEMILLA.forEach((p) => {
-          guardarDocumento("duna_productos", p.id, p).catch((e) => console.error(e));
+      // Limpieza: elimina cualquier remanente del antiguo catálogo semilla de demostración
+      const semilla = items.filter((p) => String(p.id).startsWith("SEED-FAR-"));
+      if (semilla.length > 0) {
+        semilla.forEach((p) => {
+          eliminarDocumento("duna_productos", p.id).catch((e) => console.error(e));
         });
-        setProductos(CATALOGO_SEMILLA);
+        setProductos(items.filter((p) => !String(p.id).startsWith("SEED-FAR-")));
         return;
       }
       setProductos(items);
@@ -646,12 +647,18 @@ export default function InventarioPage() {
               <h3 className="text-base font-extrabold text-slate-900">Catálogo sin productos</h3>
               <p className="text-xs text-slate-500 mt-1">Carga artículos manualmente o sube el archivo Excel extendido.</p>
             </div>
-            <div className="flex justify-center gap-3 pt-2">
+            <div className="flex flex-wrap justify-center gap-3 pt-2">
               <button
                 onClick={abrirModalNuevo}
                 className="px-5 py-2.5 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-2xl text-xs font-bold transition inline-flex items-center gap-2 shadow-sm"
               >
                 <Plus className="w-4 h-4" /> Crear Manualmente
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="px-5 py-2.5 bg-white hover:bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold transition inline-flex items-center gap-2 border border-slate-200 shadow-sm"
+              >
+                <Upload className="w-4 h-4 text-[#FE6712]" /> Importar Excel
               </button>
             </div>
           </div>

@@ -10,8 +10,7 @@ import QRCode from "qrcode";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser } from "@/context/UserContext";
 import bancosVenezuela from "@/data/bancosVenezuela";
-import { escucharColeccion, escucharDocumento, guardarDocumento, actualizarDocumento } from "@/lib/firebase";
-import CATALOGO_SEMILLA from "@/data/catalogoSemilla";
+import { escucharColeccion, escucharDocumento, guardarDocumento, actualizarDocumento, eliminarDocumento } from "@/lib/firebase";
 
 const PAISES = [
   { code: "+58", name: "Venezuela" },
@@ -188,15 +187,6 @@ export default function POSPage() {
       }
     }
 
-    const dirClientes = localStorage.getItem("duna_clientes");
-    if (dirClientes) {
-      try {
-        setClientes(JSON.parse(dirClientes));
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
     const turnosGuardados = localStorage.getItem("duna_caja_turnos");
     if (turnosGuardados) {
       try {
@@ -243,18 +233,26 @@ export default function POSPage() {
   }, []);
 
   // Sincronización en tiempo real con Firestore (colección "duna_productos"); sin variables de entorno,
-  // degrada suavemente a localStorage. Si la colección está vacía, siembra el catálogo de demostración.
+  // degrada suavemente a localStorage.
   useEffect(() => {
     return escucharColeccion("duna_productos", (items) => {
-      if (items.length === 0) {
-        CATALOGO_SEMILLA.forEach((p) => {
-          guardarDocumento("duna_productos", p.id, p).catch((e) => console.error(e));
+      // Limpieza: elimina cualquier remanente del antiguo catálogo semilla de demostración
+      const semilla = items.filter((p) => String(p.id).startsWith("SEED-FAR-"));
+      if (semilla.length > 0) {
+        semilla.forEach((p) => {
+          eliminarDocumento("duna_productos", p.id).catch((e) => console.error(e));
         });
-        setProductosInventario(CATALOGO_SEMILLA);
+        setProductosInventario(items.filter((p) => !String(p.id).startsWith("SEED-FAR-")));
         return;
       }
       setProductosInventario(items);
     });
+  }, []);
+
+  // Sincronización en tiempo real con Firestore (colección "duna_clientes"); sin variables de entorno,
+  // degrada suavemente a localStorage.
+  useEffect(() => {
+    return escucharColeccion("duna_clientes", setClientes);
   }, []);
 
   // Auto-guardado continuo del ticket en curso (crash recovery): solo escribe en localStorage, sin setState
@@ -306,9 +304,12 @@ export default function POSPage() {
     });
   };
 
-  const actualizarClientes = (nuevos) => {
+  const actualizarClientes = (nuevos, clienteModificado) => {
     setClientes(nuevos);
-    localStorage.setItem("duna_clientes", JSON.stringify(nuevos));
+    const porGuardar = clienteModificado ? [clienteModificado] : nuevos;
+    porGuardar.forEach((c) => {
+      guardarDocumento("duna_clientes", c.id, c).catch((e) => console.error(e));
+    });
   };
 
   const actualizarTurnos = (nuevos) => {
@@ -774,9 +775,9 @@ export default function POSPage() {
       limiteCredito: clienteExistente?.limiteCredito || 0,
     };
     if (clienteExistente) {
-      actualizarClientes(clientes.map(c => c === clienteExistente ? clienteActualizado : c));
+      actualizarClientes(clientes.map(c => c === clienteExistente ? clienteActualizado : c), clienteActualizado);
     } else {
-      actualizarClientes([clienteActualizado, ...clientes]);
+      actualizarClientes([clienteActualizado, ...clientes], clienteActualizado);
     }
 
     // Adjuntar la venta al turno de caja activo
@@ -1294,6 +1295,18 @@ export default function POSPage() {
                   </div>
                 )}
               </div>
+
+              {productosInventario.length === 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-2">
+                  <p className="text-[11px] font-bold text-amber-700">Aún no hay productos registrados en el catálogo.</p>
+                  <Link
+                    href="/inventario"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition"
+                  >
+                    Registrar o importar productos →
+                  </Link>
+                </div>
+              )}
 
               {productoSeleccionado && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-3">
