@@ -1,11 +1,12 @@
 "use client";
 import TicketTermicoModal from '@/components/TicketTermicoModal';
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Search, Plus, Check, X,
   Trash2, MessageCircle, ShieldCheck, Wallet, Copy, Settings, Smartphone,
   AlertTriangle, PauseCircle, History, CreditCard, Lock, Loader2, QrCode,
+  Printer
 } from "lucide-react";
 import QRCode from "qrcode";
 import { useCurrency } from "@/context/CurrencyContext";
@@ -228,6 +229,7 @@ export default function POSPage() {
   const [ventasEnEspera, setVentasEnEspera] = useState([]);
   const [modalEsperaAbierto, setModalEsperaAbierto] = useState(false);
   const [avisoClienteEnEspera, setAvisoClienteEnEspera] = useState(null);
+  const [numeroTicketActual, setNumeroTicketActual] = useState(() => `FAC-${Date.now().toString().slice(-6)}`);
 
   // --- Autorización de Crédito por Supervisor (QR dinámico) ---
   const [modalAutorizacionAbierto, setModalAutorizacionAbierto] = useState(false);
@@ -562,23 +564,29 @@ export default function POSPage() {
     inputProductoRef.current?.focus();
   };
 
-  // Enter tras escanear código de barras: si el producto no exige variante, se agrega 1 unidad directo al ticket
+  // Agrega un producto directamente desde la lista predictiva con 1 unidad
+  const handleAgregarProductoDirecto = (prod) => {
+    const requiereVariante = prod.nicho === "Gastronomía & Heladería" && (prod.variantes || []).length > 0;
+    if (requiereVariante) {
+      handleSeleccionarProducto(prod);
+      return;
+    }
+    agregarProductoAlTicket(prod, "", [], 1);
+    setBusquedaProducto("");
+    setMostrarSugerenciasProducto(false);
+    setItemActual(ITEM_ACTUAL_INICIAL);
+    inputProductoRef.current?.focus();
+  };
+
+  // Enter tras escanear código de barras o primer resultado: si el producto no exige variante, se agrega 1 unidad directo al ticket
   const handleBusquedaProductoKeyDown = (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    const match = productosInventario.find(p => p.barcode && p.barcode === busquedaProducto.trim());
+    const match = productosInventario.find(p => p.barcode && p.barcode === busquedaProducto.trim()) ||
+                  productosFiltradosCombo[0];
     if (!match) return;
 
-    const requiereVariante = match.nicho === "Gastronomía & Heladería" && (match.variantes || []).length > 0;
-    if (requiereVariante) {
-      handleSeleccionarProducto(match);
-      return;
-    }
-
-    agregarProductoAlTicket(match, "", [], 1);
-    setBusquedaProducto("");
-    setItemActual(ITEM_ACTUAL_INICIAL);
-    inputProductoRef.current?.focus();
+    handleAgregarProductoDirecto(match);
   };
 
   // Suma de recargos de los toppings actualmente seleccionados para el ítem en configuración
@@ -786,10 +794,11 @@ export default function POSPage() {
       titular: requiereDatosTransferenciaVenta ? formVenta.titular : "",
     }] : [];
 
+    const idTicketGenerado = numeroTicketActual || `FAC-${Date.now().toString().slice(-6)}`;
     const nuevaCuenta = {
-      id: `FAC-${Date.now().toString().slice(-6)}`,
+      id: idTicketGenerado,
       fecha: new Date().toLocaleDateString("es-VE"),
-      cliente: formVenta.cliente,
+      cliente: formVenta.cliente || "Consumidor Final",
       documento: documentoFinal || "S/D",
       paisCodigo: formVenta.paisCodigo,
       telefono: formVenta.telefono || "",
@@ -868,6 +877,7 @@ export default function POSPage() {
     // Venta formalizada: el borrador de recuperación ya no aplica
     localStorage.removeItem("duna_pos_draft");
     setDraftDetectado(null);
+    setNumeroTicketActual(`FAC-${Date.now().toString().slice(-6)}`);
     inputProductoRef.current?.focus();
   };
 
@@ -942,6 +952,55 @@ export default function POSPage() {
     registrarVenta(autorizacionCredito);
   };
 
+  // Confirmación de venta directa de alta velocidad con apertura de ticket térmico
+  const handleConfirmarVentaDirecta = () => {
+    if (renglonesVenta.length === 0) {
+      alert("Agrega al menos un producto al ticket antes de confirmar la venta.");
+      return;
+    }
+
+    const clienteNombre = formVenta.cliente.trim() || "Consumidor Final";
+    const docNumero = formVenta.numeroDocumento.trim() || "00000000";
+    const docTipo = formVenta.tipoDocumento || "V-";
+
+    // Preparar datos del ticket térmico
+    const ticketVenta = {
+      numeroTicket: numeroTicketActual || `FAC-${Date.now().toString().slice(-6)}`,
+      fecha: new Date().toISOString(),
+      cliente: {
+        nombre: clienteNombre,
+        cedula: `${docTipo}${docNumero}`,
+        telefono: formVenta.telefono || "",
+      },
+      items: renglonesVenta.map(r => ({
+        nombre: `${r.nombre}${r.variante ? ` (${r.variante})` : ""}`,
+        cantidad: r.cantidad,
+        precio: r.precioUnitario,
+      })),
+      totalUSD: totalFacturaUsd,
+      tasa: tasaBcv || 45.50,
+      totalBs: totalFacturaUsd * (tasaBcv || 45.50),
+      metodoPago: (formVenta.metodoPago || "Efectivo USD").toUpperCase(),
+      cajero: usuario?.nombre || "Cajero Principal",
+    };
+
+    // Si la venta está marcada como crédito y deja saldo, abrir modal de autorización/cobro detallado
+    if (formVenta.condicionVenta === "CREDITO" && saldoProyectadoCobro > 0 && !autorizacionCredito) {
+      setModalCobroAbierto(true);
+      return;
+    }
+
+    // Registrar la venta en cuentas y descontar inventario
+    registrarVenta(autorizacionCredito);
+
+    // Abrir ticket térmico para imprimir
+    setDatosUltimoTicket(ticketVenta);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("duna_ultimo_ticket", JSON.stringify(ticketVenta));
+    }
+    setModalTicketAbierto(true);
+  };
+
   const handleLimpiarTicket = () => {
     if (renglonesVenta.length > 0 && !confirm("¿Vaciar el ticket actual y empezar de nuevo?")) return;
     setModalCobroAbierto(false);
@@ -958,6 +1017,7 @@ export default function POSPage() {
     setModalAuditoriaAbierto(false);
     setTokenPagoActivo(null);
     setAvisoClienteEnEspera(null);
+    setNumeroTicketActual(`FAC-${Date.now().toString().slice(-6)}`);
     inputProductoRef.current?.focus();
   };
 
