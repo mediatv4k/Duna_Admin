@@ -40,12 +40,11 @@ export default function CXCPage() {
   const { modoMoneda, tasaBcv } = useCurrency();
 
   const [cuentas, setCuentas] = useState([]);
-  const [vistaActiva, setVistaActiva] = useState("cartera"); // "cartera" | "clientes"
+  const [vistaActiva, setVistaActiva] = useState("cartera"); // "cartera" | "reporte" | "clientes"
   const [busquedaWorkspace, setBusquedaWorkspace] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("TODAS"); // "TODAS" | "CON_SALDO" | "PAGADAS"
 
   const [busqueda, setBusqueda] = useState("");
-  const [mostrarModalReporte, setMostrarModalReporte] = useState(false);
 
   const [modalAbonoAbierto, setModalAbonoAbierto] = useState(false);
   const [cuentaAbonoActual, setCuentaAbonoActual] = useState(null);
@@ -277,15 +276,16 @@ export default function CXCPage() {
 
           <button
             type="button"
-            onClick={() => setMostrarModalReporte(true)}
-            className="w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-between text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 group"
+            onClick={() => setVistaActiva("reporte")}
+            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs transition-all flex items-center justify-between ${
+              vistaActiva === "reporte"
+                ? "bg-orange-50 text-[#FE6712] font-bold border-l-4 border-[#FE6712]"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 font-medium"
+            }`}
           >
             <span className="flex items-center gap-2.5">
               <span className="text-sm">📊</span>
               <span>Reporte e Historial</span>
-            </span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100/70 text-[#FE6712] font-semibold group-hover:bg-[#FE6712] group-hover:text-white transition">
-              Abrir
             </span>
           </button>
 
@@ -341,11 +341,13 @@ export default function CXCPage() {
                 <span className="text-xs text-slate-400">• ERP D&apos;una</span>
               </div>
               <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">
-                {vistaActiva === "cartera" ? "Cartera y Saldos de Crédito" : "Clientes Deudores"}
+                {vistaActiva === "cartera" ? "Cartera y Saldos de Crédito" : vistaActiva === "reporte" ? "Reporte e Historial de Facturas" : "Clientes Deudores"}
               </h1>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
                 {vistaActiva === "cartera"
                   ? "Control administrativo de cuentas por cobrar, abonos comerciales y auditoría de créditos."
+                  : vistaActiva === "reporte"
+                  ? "Cartera completa de créditos y cobranzas, lista para imprimir o exportar."
                   : "Consolidación de clientes con saldos activos para gestión de cobro oportuno."}
               </p>
             </div>
@@ -353,7 +355,7 @@ export default function CXCPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setMostrarModalReporte(true)}
+                onClick={() => setVistaActiva("reporte")}
                 className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
               >
                 <Printer className="w-3.5 h-3.5 text-slate-500" /> Reporte Imprimible
@@ -589,11 +591,135 @@ export default function CXCPage() {
               </span>
               <button
                 type="button"
-                onClick={() => setMostrarModalReporte(true)}
+                onClick={() => setVistaActiva("reporte")}
                 className="text-[#FE6712] hover:underline font-bold self-start sm:self-auto flex items-center gap-1"
               >
                 Ver reporte imprimible con filtros avanzados →
               </button>
+            </div>
+          </div>
+        ) : vistaActiva === "reporte" ? (
+          /* Vista: Reporte e Historial de Facturas (integrada en el workspace, sin popup) */
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Buscar por cliente, cédula o factura..."
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FE6712] transition"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shrink-0"
+              >
+                <Printer className="w-4 h-4" /> Imprimir
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                  <tr>
+                    <th className="p-4">Factura / Fecha</th>
+                    <th className="p-4">Cliente</th>
+                    <th className="p-4">Concepto</th>
+                    <th className="p-4">Total</th>
+                    <th className="p-4">Saldo Pendiente</th>
+                    <th className="p-4">Estado</th>
+                    <th className="p-4 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {cuentasFiltradas.map((c) => (
+                    <tr key={c.id} className="hover:bg-slate-50/50 transition">
+                      <td className="p-4">
+                        <strong className="text-slate-900 block font-black">{c.id}</strong>
+                        <span className="text-[11px] text-slate-400">{c.fecha}</span>
+                        {c.autorizadoPor && (
+                          <span
+                            title={`Autorizado por ${c.autorizadoPor.supervisorNombre} · ${c.autorizadoPor.horaAutorizacion}`}
+                            className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 text-[9px] font-black border border-sky-200"
+                          >
+                            <ShieldCheck className="w-2.5 h-2.5" /> Autorizado
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        <span className="font-bold text-slate-800 block">{c.cliente}</span>
+                        <span className="text-[11px] text-slate-400">{c.documento} • {c.telefono ? `${c.paisCodigo || ""} ${c.telefono}` : "Sin teléfono"}</span>
+                      </td>
+                      <td className="p-4 text-slate-600">
+                        {c.renglones && c.renglones.length > 0 ? (
+                          <>
+                            <span className="font-semibold text-slate-700 block">
+                              {c.renglones[0].nombre}{c.renglones[0].variante ? ` (${c.renglones[0].variante})` : ""} x{c.renglones[0].cantidad}
+                            </span>
+                            {c.renglones.length > 1 && (
+                              <span className="text-[11px] text-slate-400">
+                                +{c.renglones.length - 1} artículo{c.renglones.length - 1 === 1 ? "" : "s"} más
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>{c.productoNombre} (x{c.cantidad})</>
+                        )}
+                      </td>
+                      <td className="p-4 font-black text-slate-900">
+                        {formatearMonto(c.total)}
+                      </td>
+                      <td className="p-4 font-black text-rose-600">
+                        {c.saldo > 0 ? formatearMonto(c.saldo) : "$0.00"}
+                      </td>
+                      <td className="p-4">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${
+                          c.estado === "PAGADO"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : c.estado === "PARCIAL"
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-rose-50 text-rose-700 border-rose-200"
+                        }`}>
+                          {c.estado}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleEnviarWhatsapp(c)}
+                            disabled={!c.telefono}
+                            title={c.telefono ? "Enviar estado de cuenta por WhatsApp" : "Sin teléfono registrado"}
+                            className="p-1.5 text-emerald-600 hover:text-white hover:bg-emerald-600 rounded-lg border border-emerald-200 hover:border-emerald-600 transition disabled:opacity-30 disabled:pointer-events-none"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                          {c.saldo > 0 && (
+                            <button
+                              onClick={() => abrirModalAbono(c)}
+                              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-[11px] transition"
+                            >
+                              Abonar
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleEliminarCuenta(c.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 text-xs text-slate-500">
+              Mostrando <strong>{cuentasFiltradas.length}</strong> de <strong>{cuentas.length}</strong> documentos comerciales
             </div>
           </div>
         ) : (
@@ -705,160 +831,6 @@ export default function CXCPage() {
           </div>
         )}
       </main>
-
-      {/* Modal Reporte e Historial de Facturas */}
-      {mostrarModalReporte && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-6xl w-full max-h-[90vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-200 p-5 shrink-0 bg-white">
-              <div>
-                <h3 className="text-lg font-black text-slate-900">Reporte e Historial de Facturas</h3>
-                <p className="text-xs text-slate-500">Cartera completa de créditos y cobranzas</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200"
-                >
-                  <Printer className="w-4 h-4" /> Imprimir
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMostrarModalReporte(false)}
-                  className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200 flex items-center justify-center transition shrink-0"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-5 pb-0 shrink-0">
-              <div className="relative w-full sm:w-80">
-                <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Buscar por cliente, cédula o factura..."
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FE6712] transition"
-                />
-              </div>
-            </div>
-
-            <div className="overflow-y-auto p-5 flex-1">
-              <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
-                      <tr>
-                        <th className="p-4">Factura / Fecha</th>
-                        <th className="p-4">Cliente</th>
-                        <th className="p-4">Concepto</th>
-                        <th className="p-4">Total</th>
-                        <th className="p-4">Saldo Pendiente</th>
-                        <th className="p-4">Estado</th>
-                        <th className="p-4 text-right">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {cuentasFiltradas.map((c) => (
-                        <tr key={c.id} className="hover:bg-slate-50/50 transition">
-                          <td className="p-4">
-                            <strong className="text-slate-900 block font-black">{c.id}</strong>
-                            <span className="text-[11px] text-slate-400">{c.fecha}</span>
-                            {c.autorizadoPor && (
-                              <span
-                                title={`Autorizado por ${c.autorizadoPor.supervisorNombre} · ${c.autorizadoPor.horaAutorizacion}`}
-                                className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 text-[9px] font-black border border-sky-200"
-                              >
-                                <ShieldCheck className="w-2.5 h-2.5" /> Autorizado
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-4">
-                            <span className="font-bold text-slate-800 block">{c.cliente}</span>
-                            <span className="text-[11px] text-slate-400">{c.documento} • {c.telefono ? `${c.paisCodigo || ""} ${c.telefono}` : "Sin teléfono"}</span>
-                          </td>
-                          <td className="p-4 text-slate-600">
-                            {c.renglones && c.renglones.length > 0 ? (
-                              <>
-                                <span className="font-semibold text-slate-700 block">
-                                  {c.renglones[0].nombre}{c.renglones[0].variante ? ` (${c.renglones[0].variante})` : ""} x{c.renglones[0].cantidad}
-                                </span>
-                                {c.renglones.length > 1 && (
-                                  <span className="text-[11px] text-slate-400">
-                                    +{c.renglones.length - 1} artículo{c.renglones.length - 1 === 1 ? "" : "s"} más
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <>{c.productoNombre} (x{c.cantidad})</>
-                            )}
-                          </td>
-                          <td className="p-4 font-black text-slate-900">
-                            {formatearMonto(c.total)}
-                          </td>
-                          <td className="p-4 font-black text-rose-600">
-                            {c.saldo > 0 ? formatearMonto(c.saldo) : "$0.00"}
-                          </td>
-                          <td className="p-4">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${
-                              c.estado === "PAGADO"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : c.estado === "PARCIAL"
-                                ? "bg-amber-50 text-amber-700 border-amber-200"
-                                : "bg-rose-50 text-rose-700 border-rose-200"
-                            }`}>
-                              {c.estado}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => handleEnviarWhatsapp(c)}
-                                disabled={!c.telefono}
-                                title={c.telefono ? "Enviar estado de cuenta por WhatsApp" : "Sin teléfono registrado"}
-                                className="p-1.5 text-emerald-600 hover:text-white hover:bg-emerald-600 rounded-lg border border-emerald-200 hover:border-emerald-600 transition disabled:opacity-30 disabled:pointer-events-none"
-                              >
-                                <MessageCircle className="w-4 h-4" />
-                              </button>
-                              {c.saldo > 0 && (
-                                <button
-                                  onClick={() => abrirModalAbono(c)}
-                                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-[11px] transition"
-                                >
-                                  Abonar
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleEliminarCuenta(c.id)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end p-4 border-t border-slate-100 shrink-0">
-              <button
-                type="button"
-                onClick={() => setMostrarModalReporte(false)}
-                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition"
-              >
-                Cerrar Reporte
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal Abono Posterior */}
       {modalAbonoAbierto && cuentaAbonoActual && (
