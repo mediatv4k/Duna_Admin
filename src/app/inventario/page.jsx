@@ -10,7 +10,8 @@ import {
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useBusinessProfile } from "@/context/BusinessProfileContext";
-import { escucharColeccion, guardarDocumento, eliminarDocumento } from "@/lib/firebase";
+import { useUser } from "@/context/UserContext";
+import { guardarDocumento, eliminarDocumento } from "@/lib/firebase";
 
 const NICHOS = [
   "General",
@@ -22,12 +23,18 @@ const NICHOS = [
 
 const IMAGEN_DEFECTO = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&q=80";
 
-const ADONIS_URL = "https://dev.carjos-marketplace.cloud/products/store/farma-duna";
+const ADONIS_BASE = "https://dev.carjos-marketplace.cloud";
+const STORE_ID_DEFECTO = "47"; // Farma D'una Virtual
 const ADONIS_HEADERS = {
   apiKey: "bf8f1b64-6342-48c5-af05-501e4c15a6cb",
   "Content-Type": "application/json",
 };
-const ORIGEN_ADONIS = "ADONIS_FARMA";
+
+async function pedirJsonAdonis(url, signal) {
+  const res = await fetch(url, { headers: ADONIS_HEADERS, signal });
+  if (!res.ok) throw new Error(`Adonis respondió HTTP ${res.status}`);
+  return res.json();
+}
 
 // Adonis agrupa los artículos por categoría en data.products[].data; se aplanan a una sola lista
 function aplanarProductosAdonis(respuesta) {
@@ -35,27 +42,52 @@ function aplanarProductosAdonis(respuesta) {
   return grupos.flatMap((grupo) => grupo.data || []);
 }
 
-async function pedirPaginaAdonis(pagina) {
-  const res = await fetch(`${ADONIS_URL}?query=&page=${pagina}`, { headers: ADONIS_HEADERS });
-  if (!res.ok) throw new Error(`Adonis respondió HTTP ${res.status}`);
-  return res.json();
-}
+const urlCatalogo = (storeId, pagina) =>
+  `${ADONIS_BASE}/products/store/${storeId}?query=&page=${pagina}&category=&subCategory=`;
 
-// Recorre todas las páginas del catálogo (30 por página) hasta reunir los productos completos
-async function cargarCatalogoAdonis() {
-  const primera = await pedirPaginaAdonis(1);
+// Recorre todas las páginas del catálogo hasta reunir los productos completos
+async function cargarCatalogoAdonis(storeId, signal) {
+  const primera = await pedirJsonAdonis(urlCatalogo(storeId, 1), signal);
   let items = aplanarProductosAdonis(primera);
   const ultimaPagina = Number(primera?.data?.meta?.last_page) || 1;
   for (let p = 2; p <= ultimaPagina; p++) {
-    items = items.concat(aplanarProductosAdonis(await pedirPaginaAdonis(p)));
+    items = items.concat(aplanarProductosAdonis(await pedirJsonAdonis(urlCatalogo(storeId, p), signal)));
   }
   return items;
 }
 
-// Un producto sincronizado desde Adonis solo conoce su disponibilidad por outOfStock; los manuales, por su stock
+async function cargarTasaAdonis(storeId, signal) {
+  const info = await pedirJsonAdonis(`${ADONIS_BASE}/store/${storeId}/payment/info`, signal);
+  return Number(info?.data?.store?.referenceRateValue) || 0;
+}
+
+function nombreCategoriaAdonis(item) {
+  return item.category?.name || (typeof item.category === "string" ? item.category : "") || item.internalCategory || "";
+}
+
+// Esquema plano que consumen la tabla, la edición y las exportaciones
+function mapearProductoAdonis(item) {
+  return {
+    id: `ADONIS-${item.id}`,
+    adonisId: item.id,
+    code: String(item.code || item.sku || item.id),
+    name: item.name || "Sin Nombre",
+    price: Number(item.price) || 0,
+    stock: item.stock,
+    categoria: nombreCategoriaAdonis(item) || "General",
+    subcategoria: item.internalCategory || "",
+    descripcion: String(item.description || "").slice(0, 250),
+    image: item.image || item.pictureUrl || IMAGEN_DEFECTO,
+    outOfStock: Boolean(item.outOfStock),
+    origen: "ADONIS",
+  };
+}
+
+// Con stock numérico rige stock > 0; si Adonis no lo informa, la disponibilidad la marca outOfStock
 function estaAgotado(p) {
-  if (p.origen === ORIGEN_ADONIS) return Boolean(p.outOfStock);
-  return (Number(p.stock) || 0) <= 0;
+  if (p.outOfStock) return true;
+  if (p.stock === undefined || p.stock === null) return false;
+  return Number(p.stock) <= 0;
 }
 
 const FORM_INICIAL = {
@@ -213,12 +245,18 @@ function buildMarketplaceProductPayload(producto) {
 export default function InventarioPage() {
   const { modoMoneda, tasaBcv } = useCurrency();
   const { perfil } = useBusinessProfile();
+  const { usuario } = useUser();
+  // Multi-tenant: tienda activa del usuario (storeId / comercio_id); por defecto Farma D'una Virtual
+  const storeId = String(usuario?.storeId || usuario?.comercio_id || STORE_ID_DEFECTO);
   const esPerfilSimple = perfil === "SIMPLE";
   const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("TODAS");
-  const [sincronizando, setSincronizando] = useState(false);
-  const [notificacion, setNotificacion] = useState(null); // { tipo: "ok" | "error", texto }
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
+  const [tasaAdonis, setTasaAdonis] = useState(0);
+  const [recarga, setRecarga] = useState(0);
+  const tasa = tasaAdonis || tasaBcv || 0;
   const [modalAbierto, setModalAbierto] = useState(false);
   const [productoEnEdicion, setProductoEnEdicion] = useState(null);
   const fileInputRef = useRef(null);
@@ -229,22 +267,26 @@ export default function InventarioPage() {
   const [modalJsonAbierto, setModalJsonAbierto] = useState(false);
   const [productoJsonActual, setProductoJsonActual] = useState(null);
 
-  // Sincronización en tiempo real con Firestore (colección "duna_productos"); sin variables de entorno,
-  // degrada suavemente a localStorage.
+  // Carga en vivo desde AdonisJS (catálogo + tasa oficial) de la tienda activa
   useEffect(() => {
-    return escucharColeccion("duna_productos", (items) => {
-      // Limpieza: elimina cualquier remanente del antiguo catálogo semilla de demostración
-      const semilla = items.filter((p) => String(p.id).startsWith("SEED-FAR-"));
-      if (semilla.length > 0) {
-        semilla.forEach((p) => {
-          eliminarDocumento("duna_productos", p.id).catch((e) => console.error(e));
-        });
-        setProductos(items.filter((p) => !String(p.id).startsWith("SEED-FAR-")));
-        return;
-      }
-      setProductos(items);
-    });
-  }, []);
+    const controller = new AbortController();
+    Promise.allSettled([cargarCatalogoAdonis(storeId, controller.signal), cargarTasaAdonis(storeId, controller.signal)])
+      .then(([catalogo, tasa]) => {
+        if (controller.signal.aborted) return;
+        if (catalogo.status === "fulfilled") {
+          setProductos(catalogo.value.map(mapearProductoAdonis));
+          setError("");
+        } else {
+          console.error(catalogo.reason);
+          setError("No se pudo cargar el catálogo desde Adonis. Verifica tu conexión e intenta de nuevo.");
+        }
+        if (tasa.status === "fulfilled") setTasaAdonis(tasa.value);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCargando(false);
+      });
+    return () => controller.abort();
+  }, [storeId, recarga]);
 
   const actualizarProductos = (nuevos, idsEliminados = []) => {
     setProductos(nuevos);
@@ -256,49 +298,10 @@ export default function InventarioPage() {
     });
   };
 
-  // Trae el catálogo completo de Adonis y lo escribe en "duna_productos" (upsert por id determinístico)
-  const handleSincronizarAdonis = async () => {
-    setSincronizando(true);
-    setNotificacion(null);
-    try {
-      const items = await cargarCatalogoAdonis();
-      const existentes = new Map(productos.map((p) => [p.id, p]));
-
-      const mapeados = items.map((item) => {
-        const id = `ADONIS-${item.id}`;
-        const previo = existentes.get(id);
-        return {
-          ...(previo || {}),
-          id,
-          adonisId: item.id,
-          code: String(item.code || id),
-          name: item.name || "Sin Nombre",
-          price: Number(item.price) || 0,
-          // Adonis no informa cantidades: se conserva el stock local ya cargado si existe
-          stock: item.stock !== undefined && item.stock !== null ? Number(item.stock) || 0 : Number(previo?.stock) || 0,
-          categoria: item.category || item.internalCategory || "General",
-          subcategoria: item.internalCategory || "",
-          descripcion: String(item.description || "").slice(0, 250),
-          image: item.image || IMAGEN_DEFECTO,
-          outOfStock: Boolean(item.outOfStock),
-          status: "ACTIVE",
-          nicho: previo?.nicho || (String(item.category || "").toUpperCase() === "FARMACIA" ? "Farmacia & Salud" : "General"),
-          origen: ORIGEN_ADONIS,
-        };
-      });
-
-      // Escritura por lotes de 20 para no saturar Firestore
-      for (let i = 0; i < mapeados.length; i += 20) {
-        await Promise.all(mapeados.slice(i, i + 20).map((p) => guardarDocumento("duna_productos", p.id, p)));
-      }
-
-      setNotificacion({ tipo: "ok", texto: `✓ ${mapeados.length} productos sincronizados con éxito en la base de datos` });
-    } catch (err) {
-      console.error(err);
-      setNotificacion({ tipo: "error", texto: "No se pudo sincronizar con Adonis. Verifica tu conexión e intenta de nuevo." });
-    } finally {
-      setSincronizando(false);
-    }
+  // Vuelve a consultar Adonis y refresca la tabla; no escribe en Firestore
+  const handleSincronizarAdonis = () => {
+    setCargando(true);
+    setRecarga((n) => n + 1);
   };
 
   const handleFileUpload = (e) => {
@@ -680,11 +683,11 @@ export default function InventarioPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleSincronizarAdonis}
-              disabled={sincronizando}
+              disabled={cargando}
               className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-60"
             >
-              <RefreshCw className={`w-4 h-4 ${sincronizando ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">{sincronizando ? "Sincronizando..." : "Sincronizar con Adonis"}</span>
+              <RefreshCw className={`w-4 h-4 ${cargando ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{cargando ? "Actualizando..." : "Sincronizar con Adonis"}</span>
             </button>
             <button
               onClick={abrirModalNuevo}
@@ -745,13 +748,9 @@ export default function InventarioPage() {
           </div>
         </div>
 
-        {notificacion && (
-          <div className={`rounded-xl border px-4 py-3 text-xs font-bold ${
-            notificacion.tipo === "ok"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-rose-200 bg-rose-50 text-rose-700"
-          }`}>
-            {notificacion.texto}
+        {error && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
+            {error}
           </div>
         )}
 
@@ -767,10 +766,10 @@ export default function InventarioPage() {
             <div className="flex flex-wrap justify-center gap-3 pt-2">
               <button
                 onClick={handleSincronizarAdonis}
-                disabled={sincronizando}
+                disabled={cargando}
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition inline-flex items-center gap-2 shadow-sm disabled:opacity-60"
               >
-                <RefreshCw className={`w-4 h-4 ${sincronizando ? "animate-spin" : ""}`} /> Sincronizar con Adonis
+                <RefreshCw className={`w-4 h-4 ${cargando ? "animate-spin" : ""}`} /> Sincronizar con Adonis
               </button>
               <button
                 onClick={abrirModalNuevo}
@@ -830,11 +829,11 @@ export default function InventarioPage() {
                           <td className="p-4 text-slate-600">{item.categoria || "—"}</td>
                           <td className="p-4 font-black text-slate-900">${precio.toFixed(2)}</td>
                           <td className="p-4 text-slate-600 font-semibold">
-                            {tasaBcv > 0
-                              ? `Bs. ${(precio * tasaBcv).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            {tasa > 0
+                              ? `Bs. ${(precio * tasa).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                               : "—"}
                           </td>
-                          <td className="p-4 font-bold text-slate-700">{item.stock ?? 0}</td>
+                          <td className="p-4 font-bold text-slate-700">{item.stock ?? "—"}</td>
                           <td className="p-4">
                             <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${
                               agotado
