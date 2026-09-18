@@ -128,7 +128,7 @@ export default function TicketTermicoModal({ isOpen, onClose, venta, empresa = {
 
         {/* Botones de Acción (solo pantalla) */}
         <div className="no-print p-3 bg-slate-100 border-t flex gap-2">
-          <button
+          autoFocus <button
             onClick={handlePrint}
             className="flex-1 bg-[#FE6712] hover:bg-[#e0580a] text-white py-2.5 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2 shadow"
           >

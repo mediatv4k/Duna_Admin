@@ -148,6 +148,40 @@ export default function POSPage() {
       metodoPago: 'Efectivo',
       cajero: 'Omar Soto'
     };
+
+  // AUTO-APERTURA DE TICKET TRAS COBRO
+  const abrirTicketAuto = (metodoFinal) => {
+    try {
+      const prods = (typeof carrito !== 'undefined' && Array.isArray(carrito) && carrito.length > 0) ? [...carrito] :
+                    (typeof cart !== 'undefined' && Array.isArray(cart) && cart.length > 0) ? [...cart] : [];
+      const tUSD = typeof totalUSD === 'number' ? totalUSD :
+                   typeof total === 'number' ? total :
+                   prods.reduce((acc, it) => acc + (Number(it.precio || it.price || 0) * Number(it.cantidad || it.qty || 1)), 0);
+      const tasaValor = typeof tasaBCV === 'number' ? tasaBCV :
+                        typeof tasa === 'number' ? tasa : 45.50;
+      const cli = typeof cliente === 'object' && cliente !== null ? cliente : {
+        nombre: typeof nombreCliente === 'string' && nombreCliente ? nombreCliente : 'Consumidor Final',
+        cedula: typeof cedulaCliente === 'string' && cedulaCliente ? cedulaCliente : 'V-00000000'
+      };
+      const ticketVenta = {
+        numeroTicket: 'FAC-' + Math.floor(1000 + Math.random() * 9000),
+        fecha: new Date().toISOString(),
+        cliente: cli,
+        items: prods.length > 0 ? prods : [{ nombre: 'Venta Mostrador', cantidad: 1, precio: tUSD || 10 }],
+        totalUSD: tUSD || 10,
+        tasa: tasaValor,
+        totalBs: typeof totalBs === 'number' && totalBs > 0 ? totalBs : ((tUSD || 10) * tasaValor),
+        metodoPago: (metodoFinal && typeof metodoFinal === 'string') ? metodoFinal.toUpperCase() :
+                    (typeof metodoPago === 'string' ? metodoPago.toUpperCase() : 'EFECTIVO'),
+        cajero: 'Omar Soto'
+      };
+      abrirTicket(ticketVenta);
+    } catch(err) {
+      console.warn('Error en auto ticket:', err);
+      abrirTicket();
+    }
+  };
+
     setDatosUltimoTicket(ticketData);
     if (typeof window !== 'undefined') {
       localStorage.setItem('duna_ultimo_ticket', JSON.stringify(ticketData));
