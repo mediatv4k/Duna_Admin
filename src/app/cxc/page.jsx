@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Search, Check, X,
-  Receipt, Trash2, MessageCircle, ArrowRight, ShieldCheck, Printer,
+  Receipt, Trash2, MessageCircle, ArrowRight, ShieldCheck, Printer, Users,
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import bancosVenezuela from "@/data/bancosVenezuela";
@@ -28,8 +28,42 @@ const DATOS_PAGO_INICIAL = {
   titular: "",
 };
 
+const PREFIJOS_FISCALES = ["V", "J", "E", "G", "P"];
+const CODIGOS_PAIS_TELEFONO = ["+58", "+57", "+1", "+34"];
+
+const FORM_CLIENTE_FISCAL_INICIAL = {
+  prefijo: "V",
+  documento: "",
+  razonSocial: "",
+  domicilioFiscal: "",
+  codigoPais: "+58",
+  telefono: "",
+  email: "",
+  contribuyenteEspecial: false,
+  limiteCredito: "",
+  diasCredito: "",
+};
+
+const TITULOS_VISTA = {
+  cartera: "Cartera y Saldos de Crédito",
+  reporte: "Reporte e Historial de Facturas",
+  clientes: "Clientes Deudores",
+  directorio: "Directorio de Clientes Fiscales",
+};
+
+const SUBTITULOS_VISTA = {
+  cartera: "Control administrativo de cuentas por cobrar, abonos comerciales y auditoría de créditos.",
+  reporte: "Cartera completa de créditos y cobranzas, lista para imprimir o exportar.",
+  clientes: "Consolidación de clientes con saldos activos para gestión de cobro oportuno.",
+  directorio: "Registro maestro de clientes fiscales: RIF, domicilio, contacto y condiciones de crédito.",
+};
+
 function limpiarTelefono(str) {
   return String(str || "").replace(/\D/g, "").replace(/^0+/, "");
+}
+
+function normalizarDoc(str) {
+  return String(str || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 function formatearBs(montoUsd, tasaBcv) {
@@ -40,11 +74,17 @@ export default function CXCPage() {
   const { modoMoneda, tasaBcv } = useCurrency();
 
   const [cuentas, setCuentas] = useState([]);
-  const [vistaActiva, setVistaActiva] = useState("cartera"); // "cartera" | "reporte" | "clientes"
+  const [vistaActiva, setVistaActiva] = useState("cartera"); // "cartera" | "reporte" | "clientes" | "directorio"
   const [busquedaWorkspace, setBusquedaWorkspace] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("TODAS"); // "TODAS" | "CON_SALDO" | "PAGADAS"
 
   const [busqueda, setBusqueda] = useState("");
+
+  // Directorio de Clientes Fiscales
+  const [clientesFiscales, setClientesFiscales] = useState([]);
+  const [busquedaDirectorio, setBusquedaDirectorio] = useState("");
+  const [mostrarFormClienteFiscal, setMostrarFormClienteFiscal] = useState(false);
+  const [formClienteFiscal, setFormClienteFiscal] = useState(FORM_CLIENTE_FISCAL_INICIAL);
 
   const [modalAbonoAbierto, setModalAbonoAbierto] = useState(false);
   const [cuentaAbonoActual, setCuentaAbonoActual] = useState(null);
@@ -65,9 +105,66 @@ export default function CXCPage() {
     }
   }, []);
 
+  // Cargar directorio de clientes fiscales
+  useEffect(() => {
+    const guardados = localStorage.getItem("duna_clientes_fiscales");
+    if (guardados) {
+      try {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente
+        setClientesFiscales(JSON.parse(guardados));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
   const actualizarCuentas = (nuevas) => {
     setCuentas(nuevas);
     localStorage.setItem("duna_cxc_records", JSON.stringify(nuevas));
+  };
+
+  const actualizarClientesFiscales = (nuevos) => {
+    setClientesFiscales(nuevos);
+    localStorage.setItem("duna_clientes_fiscales", JSON.stringify(nuevos));
+  };
+
+  const abrirFormClienteFiscal = () => {
+    setFormClienteFiscal(FORM_CLIENTE_FISCAL_INICIAL);
+    setMostrarFormClienteFiscal(true);
+  };
+
+  const cancelarFormClienteFiscal = () => {
+    setFormClienteFiscal(FORM_CLIENTE_FISCAL_INICIAL);
+    setMostrarFormClienteFiscal(false);
+  };
+
+  const guardarClienteFiscal = () => {
+    const documento = formClienteFiscal.documento.trim();
+    const razonSocial = formClienteFiscal.razonSocial.trim();
+    if (!documento || !razonSocial) {
+      alert("Indica el documento fiscal y la razón social del cliente.");
+      return;
+    }
+
+    const rifCompleto = `${formClienteFiscal.prefijo}-${documento}`;
+    const nuevoCliente = {
+      id: `${rifCompleto}-${Date.now()}`,
+      prefijo: formClienteFiscal.prefijo,
+      documento,
+      rifCompleto,
+      razonSocial,
+      domicilioFiscal: formClienteFiscal.domicilioFiscal.trim(),
+      codigoPais: formClienteFiscal.codigoPais,
+      telefono: formClienteFiscal.telefono.trim(),
+      email: formClienteFiscal.email.trim(),
+      contribuyenteEspecial: formClienteFiscal.contribuyenteEspecial,
+      limiteCredito: Number(formClienteFiscal.limiteCredito) || 0,
+      diasCredito: Number(formClienteFiscal.diasCredito) || 0,
+      fechaRegistro: new Date().toLocaleString("es-VE"),
+    };
+
+    actualizarClientesFiscales([...clientesFiscales, nuevoCliente]);
+    cancelarFormClienteFiscal();
   };
 
   // Modal dedicado de abonos posteriores
@@ -228,6 +325,23 @@ export default function CXCPage() {
     return Object.values(mapa).sort((a, b) => b.deudaTotal - a.deudaTotal);
   }, [cuentas]);
 
+  // Directorio de Clientes Fiscales: filtro por RIF/Nombre
+  const clientesFiscalesFiltrados = useMemo(() => {
+    const q = busquedaDirectorio.trim().toLowerCase();
+    if (!q) return clientesFiscales;
+    return clientesFiscales.filter((cli) =>
+      cli.rifCompleto.toLowerCase().includes(q) ||
+      cli.razonSocial.toLowerCase().includes(q)
+    );
+  }, [clientesFiscales, busquedaDirectorio]);
+
+  const saldoPendientePorDocumento = (rif) => {
+    const objetivo = normalizarDoc(rif);
+    return cuentas
+      .filter((c) => normalizarDoc(c.documento) === objetivo)
+      .reduce((acc, c) => acc + (c.saldo || 0), 0);
+  };
+
   const pillClase = (activo) =>
     `px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${
       activo ? "bg-[#FE6712] text-white shadow-sm" : "bg-white text-slate-500 border border-slate-200 hover:border-[#FE6712] hover:text-[#FE6712]"
@@ -308,6 +422,26 @@ export default function CXCPage() {
               </span>
             )}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setVistaActiva("directorio")}
+            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs transition-all flex items-center justify-between ${
+              vistaActiva === "directorio"
+                ? "bg-orange-50 text-[#FE6712] font-bold border-l-4 border-[#FE6712]"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 font-medium"
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <Users className="w-3.5 h-3.5" />
+              <span>Directorio de Clientes</span>
+            </span>
+            {clientesFiscales.length > 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-bold border border-slate-200">
+                {clientesFiscales.length}
+              </span>
+            )}
+          </button>
         </nav>
 
         {/* Enlace inferior para saltar al mostrador */}
@@ -341,14 +475,10 @@ export default function CXCPage() {
                 <span className="text-xs text-slate-400">• ERP D&apos;una</span>
               </div>
               <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">
-                {vistaActiva === "cartera" ? "Cartera y Saldos de Crédito" : vistaActiva === "reporte" ? "Reporte e Historial de Facturas" : "Clientes Deudores"}
+                {TITULOS_VISTA[vistaActiva]}
               </h1>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                {vistaActiva === "cartera"
-                  ? "Control administrativo de cuentas por cobrar, abonos comerciales y auditoría de créditos."
-                  : vistaActiva === "reporte"
-                  ? "Cartera completa de créditos y cobranzas, lista para imprimir o exportar."
-                  : "Consolidación de clientes con saldos activos para gestión de cobro oportuno."}
+                {SUBTITULOS_VISTA[vistaActiva]}
               </p>
             </div>
 
@@ -416,7 +546,211 @@ export default function CXCPage() {
         </div>
 
         {/* Contenido Central Estructurado */}
-        {cuentas.length === 0 ? (
+        {vistaActiva === "directorio" ? (
+          /* Vista: Directorio de Clientes Fiscales 360° (sin modales) */
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-black text-slate-900">Directorio de Clientes Fiscales</h2>
+                  <p className="text-[11px] text-slate-400 font-medium">Registro maestro de RIF, cédulas y condiciones comerciales.</p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                    <input
+                      type="text"
+                      value={busquedaDirectorio}
+                      onChange={(e) => setBusquedaDirectorio(e.target.value)}
+                      placeholder="Buscar por RIF o Nombre..."
+                      className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FE6712] transition"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => (mostrarFormClienteFiscal ? cancelarFormClienteFiscal() : abrirFormClienteFiscal())}
+                    className="px-4 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-xs font-bold transition shadow-sm shadow-orange-500/20 shrink-0"
+                  >
+                    {mostrarFormClienteFiscal ? "Cerrar Formulario" : "+ Nuevo Cliente Fiscal"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Formulario de Registro inline, integrado en el lienzo central (sin modal) */}
+              {mostrarFormClienteFiscal && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
+                  {/* Fila 1: Prefijo + Documento/RIF + Razón Social */}
+                  <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr_2fr] gap-3">
+                    <select
+                      value={formClienteFiscal.prefijo}
+                      onChange={(e) => setFormClienteFiscal({ ...formClienteFiscal, prefijo: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                    >
+                      {PREFIJOS_FISCALES.map((p) => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                    <input
+                      type="text"
+                      value={formClienteFiscal.documento}
+                      onChange={(e) => setFormClienteFiscal({ ...formClienteFiscal, documento: e.target.value })}
+                      placeholder="Documento Fiscal / RIF"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                    />
+                    <input
+                      type="text"
+                      value={formClienteFiscal.razonSocial}
+                      onChange={(e) => setFormClienteFiscal({ ...formClienteFiscal, razonSocial: e.target.value })}
+                      placeholder="Razón Social / Nombre Completo"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                    />
+                  </div>
+
+                  {/* Fila 2: Domicilio Fiscal + Teléfono (+58) + Correo */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      value={formClienteFiscal.domicilioFiscal}
+                      onChange={(e) => setFormClienteFiscal({ ...formClienteFiscal, domicilioFiscal: e.target.value })}
+                      placeholder="Domicilio Fiscal Completo"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                    />
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={formClienteFiscal.codigoPais}
+                        onChange={(e) => setFormClienteFiscal({ ...formClienteFiscal, codigoPais: e.target.value })}
+                        className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FE6712] shrink-0"
+                      >
+                        {CODIGOS_PAIS_TELEFONO.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input
+                        type="text"
+                        value={formClienteFiscal.telefono}
+                        onChange={(e) => setFormClienteFiscal({ ...formClienteFiscal, telefono: e.target.value })}
+                        placeholder="Teléfono"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                      />
+                    </div>
+                    <input
+                      type="email"
+                      value={formClienteFiscal.email}
+                      onChange={(e) => setFormClienteFiscal({ ...formClienteFiscal, email: e.target.value })}
+                      placeholder="Correo Electrónico"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                    />
+                  </div>
+
+                  {/* Fila 3: Contribuyente Especial + Límite de Crédito + Días de Crédito */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+                    <label className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formClienteFiscal.contribuyenteEspecial}
+                        onChange={(e) => setFormClienteFiscal({ ...formClienteFiscal, contribuyenteEspecial: e.target.checked })}
+                        className="w-3.5 h-3.5 accent-[#FE6712]"
+                      />
+                      Contribuyente Especial (Retención IVA)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formClienteFiscal.limiteCredito}
+                      onChange={(e) => setFormClienteFiscal({ ...formClienteFiscal, limiteCredito: e.target.value })}
+                      placeholder="Límite de Crédito ($ USD)"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                    />
+                    <input
+                      type="number"
+                      value={formClienteFiscal.diasCredito}
+                      onChange={(e) => setFormClienteFiscal({ ...formClienteFiscal, diasCredito: e.target.value })}
+                      placeholder="Días de Crédito"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={cancelarFormClienteFiscal}
+                      className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold transition"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={guardarClienteFiscal}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Check className="w-4 h-4" /> Guardar Cliente
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Tabla de Clientes Fiscales */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                  <tr>
+                    <th className="p-4">RIF / Cédula</th>
+                    <th className="p-4">Razón Social</th>
+                    <th className="p-4">Teléfono</th>
+                    <th className="p-4">Tipo</th>
+                    <th className="p-4">Límite de Crédito</th>
+                    <th className="p-4">Saldo Pendiente</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {clientesFiscalesFiltrados.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="p-8 text-center text-xs text-slate-400">
+                        {clientesFiscales.length === 0
+                          ? "Aún no hay clientes fiscales registrados. Usa \"+ Nuevo Cliente Fiscal\" para comenzar."
+                          : "No se encontraron clientes que coincidan con la búsqueda."}
+                      </td>
+                    </tr>
+                  ) : (
+                    clientesFiscalesFiltrados.map((cli) => {
+                      const saldoPendiente = saldoPendientePorDocumento(cli.rifCompleto);
+                      return (
+                        <tr key={cli.id} className="hover:bg-slate-50/60 transition">
+                          <td className="p-4 font-black text-slate-900">{cli.rifCompleto}</td>
+                          <td className="p-4">
+                            <span className="font-bold text-slate-800 block">{cli.razonSocial}</span>
+                            {cli.domicilioFiscal && (
+                              <span className="text-[11px] text-slate-400">{cli.domicilioFiscal}</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-slate-600">
+                            {cli.telefono ? `${cli.codigoPais} ${cli.telefono}` : "Sin teléfono"}
+                          </td>
+                          <td className="p-4">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${
+                              cli.contribuyenteEspecial
+                                ? "bg-sky-50 text-sky-700 border-sky-200"
+                                : "bg-slate-50 text-slate-600 border-slate-200"
+                            }`}>
+                              {cli.contribuyenteEspecial ? "Especial" : "Ordinario"}
+                            </span>
+                          </td>
+                          <td className="p-4 font-black text-slate-900">
+                            ${cli.limiteCredito.toFixed(2)}
+                          </td>
+                          <td className={`p-4 font-black ${saldoPendiente > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                            ${saldoPendiente.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 text-xs text-slate-500">
+              Mostrando <strong>{clientesFiscalesFiltrados.length}</strong> de <strong>{clientesFiscales.length}</strong> clientes fiscales registrados
+            </div>
+          </div>
+        ) : cuentas.length === 0 ? (
           <div className="bg-white border-2 border-dashed border-slate-200 rounded-3xl p-12 text-center max-w-lg mx-auto space-y-4 shadow-sm my-8">
             <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
               <Receipt className="w-7 h-7" />
