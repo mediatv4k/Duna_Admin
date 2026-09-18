@@ -1068,7 +1068,8 @@ export default function POSPage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {turnoActivo ? (
+            <button type="button" onClick={() => abrirTicket()} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#FE6712] hover:bg-[#e0580a] text-white flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">📋 Reimprimir Ticket</button>
+          {turnoActivo ? (
               <div className="hidden sm:flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-2xl px-3 py-2">
                 <Wallet className="w-4 h-4 text-emerald-700" />
                 <div className="leading-tight">
@@ -1080,8 +1081,7 @@ export default function POSPage() {
               <span className="hidden sm:inline text-[11px] text-slate-400 font-semibold">Sin turno de caja abierto</span>
             )}
             {turnoActivo ? (
-              <button type="button" onClick={() => abrirTicket()} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#FE6712] hover:bg-[#e0580a] text-white flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">📋 Reimprimir Ticket</button>
-          <button onClick={handleCerrarTurno} className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition">
+              <button onClick={handleCerrarTurno} className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition">
                 Cerrar Turno / Arqueo
               </button>
             ) : (

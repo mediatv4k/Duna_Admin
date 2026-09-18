@@ -18,7 +18,7 @@ export default function TicketTermicoModal({ isOpen, onClose, venta, empresa = {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print:p-0 print:bg-white print:static">
       {/* Estilos para impresión térmica exacta */}
-      <style jsx global>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           body * { visibility: hidden !important; }
           #ticket-termico-area, #ticket-termico-area * { visibility: visible !important; }
@@ -33,7 +33,7 @@ export default function TicketTermicoModal({ isOpen, onClose, venta, empresa = {
           }
           .no-print { display: none !important; }
         }
-      `}</style>
+      ` }} />
 
       <div className="bg-white text-black w-full max-w-sm rounded-xl shadow-2xl overflow-hidden print:shadow-none print:w-[80mm] print:max-w-none">
         {/* Acciones superiores (solo pantalla) */}
