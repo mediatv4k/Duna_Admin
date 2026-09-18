@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
@@ -17,26 +17,26 @@ const PAISES = [
   { code: "+57", name: "Colombia" },
   { code: "+56", name: "Chile" },
   { code: "+593", name: "Ecuador" },
-  { code: "+1", name: "USA/Canadá" },
-  { code: "+34", name: "España" },
-  { code: "+507", name: "Panamá" },
-  { code: "+51", name: "Perú" },
+  { code: "+1", name: "USA/CanadÃ¡" },
+  { code: "+34", name: "EspaÃ±a" },
+  { code: "+507", name: "PanamÃ¡" },
+  { code: "+51", name: "PerÃº" },
   { code: "+54", name: "Argentina" },
-  { code: "+52", name: "México" },
+  { code: "+52", name: "MÃ©xico" },
   { code: "+55", name: "Brasil" },
 ];
 
 const METODOS_PAGO = [
   "Efectivo USD",
   "Efectivo Bs",
-  "Pago Móvil",
+  "Pago MÃ³vil",
   "Transf. Mismo Banco",
   "Transf. Interbancaria",
-  "Tarjeta Débito/Crédito",
+  "Tarjeta DÃ©bito/CrÃ©dito",
   "Zelle",
 ];
 
-const METODOS_CON_REFERENCIA = ["Pago Móvil", "Transf. Mismo Banco", "Transf. Interbancaria"];
+const METODOS_CON_REFERENCIA = ["Pago MÃ³vil", "Transf. Mismo Banco", "Transf. Interbancaria"];
 
 const TIPOS_DOCUMENTO = ["V-", "J-", "E-", "G-", "P-"];
 
@@ -58,7 +58,7 @@ const FORM_VENTA_INICIAL = {
   nota: "",
 };
 
-// Ítem en configuración antes de agregarse como renglón al ticket
+// Ãtem en configuraciÃ³n antes de agregarse como renglÃ³n al ticket
 const ITEM_ACTUAL_INICIAL = {
   productoId: "",
   varianteNombre: "",
@@ -66,7 +66,7 @@ const ITEM_ACTUAL_INICIAL = {
   cantidad: 1,
 };
 
-// Datos fijos del comercio para Pago Móvil, con valores por defecto si el usuario aún no los configuró
+// Datos fijos del comercio para Pago MÃ³vil, con valores por defecto si el usuario aÃºn no los configurÃ³
 const CONFIG_PAGOMOVIL_DEFECTO = {
   bancoReceptor: "0102",
   telefonoReceptor: "04141234567",
@@ -74,7 +74,7 @@ const CONFIG_PAGOMOVIL_DEFECTO = {
   nombreTitular: "Mi Comercio C.A.",
 };
 
-// Token corto de autoservicio para el portal público /pago/[token]
+// Token corto de autoservicio para el portal pÃºblico /pago/[token]
 function generarTokenPago() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let sufijo = "";
@@ -82,7 +82,7 @@ function generarTokenPago() {
   return `tk-${sufijo}`;
 }
 
-// Token efímero para la autorización de crédito por QR (/supervisor?token=...)
+// Token efÃ­mero para la autorizaciÃ³n de crÃ©dito por QR (/supervisor?token=...)
 function generarTokenAuth() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let sufijo = "";
@@ -101,12 +101,12 @@ function formatearBs(montoUsd, tasaBcv) {
   return (montoUsd * tasaBcv).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Origen público real (dominio de Vercel en producción, localhost en desarrollo); nunca hardcodeado
+// Origen pÃºblico real (dominio de Vercel en producciÃ³n, localhost en desarrollo); nunca hardcodeado
 function obtenerOrigen() {
   return typeof window !== "undefined" ? window.location.origin : "";
 }
 
-// Normaliza cédula/RIF: quita puntos y espacios, mayúsculas, y asegura guion tras el prefijo (V, J, E, G, P)
+// Normaliza cÃ©dula/RIF: quita puntos y espacios, mayÃºsculas, y asegura guion tras el prefijo (V, J, E, G, P)
 function normalizarDocumento(raw) {
   if (!raw) return "";
   const limpio = String(raw).toUpperCase().replace(/[.\s]/g, "");
@@ -114,7 +114,7 @@ function normalizarDocumento(raw) {
   return match ? `${match[1]}-${match[2]}` : limpio;
 }
 
-// Extrae solo los dígitos de un documento, para búsqueda tolerante (ej: 'V-10.089.073' -> '10089073')
+// Extrae solo los dÃ­gitos de un documento, para bÃºsqueda tolerante (ej: 'V-10.089.073' -> '10089073')
 function extraerDigitos(raw) {
   return String(raw || "").replace(/\D/g, "");
 }
@@ -166,7 +166,7 @@ export default function POSPage() {
   const [modalEsperaAbierto, setModalEsperaAbierto] = useState(false);
   const [avisoClienteEnEspera, setAvisoClienteEnEspera] = useState(null);
 
-  // --- Autorización de Crédito por Supervisor (QR dinámico) ---
+  // --- AutorizaciÃ³n de CrÃ©dito por Supervisor (QR dinÃ¡mico) ---
   const [modalAutorizacionAbierto, setModalAutorizacionAbierto] = useState(false);
   const [autorizacionActual, setAutorizacionActual] = useState(null);
   const [autorizacionCredito, setAutorizacionCredito] = useState(null);
@@ -232,11 +232,11 @@ export default function POSPage() {
     inputProductoRef.current?.focus();
   }, []);
 
-  // Sincronización en tiempo real con Firestore (colección "duna_productos"); sin variables de entorno,
+  // SincronizaciÃ³n en tiempo real con Firestore (colecciÃ³n "duna_productos"); sin variables de entorno,
   // degrada suavemente a localStorage.
   useEffect(() => {
     return escucharColeccion("duna_productos", (items) => {
-      // Limpieza: elimina cualquier remanente del antiguo catálogo semilla de demostración
+      // Limpieza: elimina cualquier remanente del antiguo catÃ¡logo semilla de demostraciÃ³n
       const semilla = items.filter((p) => String(p.id).startsWith("SEED-FAR-"));
       if (semilla.length > 0) {
         semilla.forEach((p) => {
@@ -249,7 +249,7 @@ export default function POSPage() {
     });
   }, []);
 
-  // Sincronización en tiempo real con Firestore (colección "duna_clientes"); sin variables de entorno,
+  // SincronizaciÃ³n en tiempo real con Firestore (colecciÃ³n "duna_clientes"); sin variables de entorno,
   // degrada suavemente a localStorage.
   useEffect(() => {
     return escucharColeccion("duna_clientes", setClientes);
@@ -338,11 +338,11 @@ export default function POSPage() {
 
   const handleCerrarTurno = () => {
     if (!turnoActivo) return;
-    if (!confirm(`¿Cerrar el turno ${turnoActivo.id}? Se registraron ${turnoActivo.ventasIds.length} venta(s).`)) return;
+    if (!confirm(`Â¿Cerrar el turno ${turnoActivo.id}? Se registraron ${turnoActivo.ventasIds.length} venta(s).`)) return;
     actualizarTurnos(turnos.map(t => t.id === turnoActivo.id ? { ...t, estado: "CERRADA" } : t));
   };
 
-  // Búsqueda predictiva por nombre o cédula/RIF (tolerante: compara solo dígitos)
+  // BÃºsqueda predictiva por nombre o cÃ©dula/RIF (tolerante: compara solo dÃ­gitos)
   const filtrarClientes = (query) => {
     if (!query) return [];
     const q = query.toLowerCase();
@@ -371,12 +371,12 @@ export default function POSPage() {
     setCampoActivoSugerencia(null);
   };
 
-  // Escudo anti-duplicados + búsqueda tolerante: detección en tiempo real comparando solo dígitos
+  // Escudo anti-duplicados + bÃºsqueda tolerante: detecciÃ³n en tiempo real comparando solo dÃ­gitos
   const clienteCoincidenteActual = formVenta.numeroDocumento.length >= 5
     ? clientes.find(c => extraerDigitos(c.documento) === formVenta.numeroDocumento)
     : null;
 
-  // Al tipear el número de documento: limpia a solo dígitos y evalúa coincidencia al instante
+  // Al tipear el nÃºmero de documento: limpia a solo dÃ­gitos y evalÃºa coincidencia al instante
   const handleCambiarNumeroDocumento = (valor) => {
     const soloDigitos = extraerDigitos(valor);
     const match = soloDigitos.length >= 5
@@ -398,21 +398,21 @@ export default function POSPage() {
     setErrorDocumento(false);
     if (match) setDocumentoBloqueado(true);
 
-    // Detección reactiva: ¿esta cédula ya tiene un ticket pausado en espera?
+    // DetecciÃ³n reactiva: Â¿esta cÃ©dula ya tiene un ticket pausado en espera?
     const ventaEnEsperaCoincidente = soloDigitos.length >= 5
       ? ventasEnEspera.find(v => extraerDigitos(v.cliente?.numeroDocumento) === soloDigitos)
       : null;
     setAvisoClienteEnEspera(ventaEnEsperaCoincidente || null);
   };
 
-  // Cédula/RIF es la clave única: se libera solo con una acción explícita del usuario
+  // CÃ©dula/RIF es la clave Ãºnica: se libera solo con una acciÃ³n explÃ­cita del usuario
   const handleDesbloquearDocumento = () => {
     setDocumentoBloqueado(false);
     setFormVenta(prev => ({ ...prev, tipoDocumento: "V-", numeroDocumento: "", cliente: "", paisCodigo: "+58", telefono: "", direccion: "", condicionVenta: "CREDITO" }));
     setAvisoClienteEnEspera(null);
   };
 
-  // Auditoría reactiva de deuda: facturas pendientes del cliente detectado por cédula/RIF
+  // AuditorÃ­a reactiva de deuda: facturas pendientes del cliente detectado por cÃ©dula/RIF
   const facturasAdeudadasCliente = clienteCoincidenteActual
     ? cuentas.filter(c => extraerDigitos(c.documento) === extraerDigitos(clienteCoincidenteActual.documento) && c.saldo > 0)
     : [];
@@ -421,7 +421,7 @@ export default function POSPage() {
   const cantidadFacturasPendientes = facturasAdeudadasCliente.length;
 
   const productoSeleccionado = productosInventario.find(p => p.id === itemActual.productoId) || null;
-  const esGastronomiaConVariantes = productoSeleccionado?.nicho === "Gastronomía & Heladería" && (productoSeleccionado.variantes || []).length > 0;
+  const esGastronomiaConVariantes = productoSeleccionado?.nicho === "GastronomÃ­a & HeladerÃ­a" && (productoSeleccionado.variantes || []).length > 0;
 
   const productosFiltradosCombo = (busquedaProducto
     ? productosInventario.filter(p =>
@@ -438,7 +438,7 @@ export default function POSPage() {
     setMostrarSugerenciasProducto(false);
   };
 
-  // Añade (o fusiona con un renglón existente idéntico) un producto al ticket de venta
+  // AÃ±ade (o fusiona con un renglÃ³n existente idÃ©ntico) un producto al ticket de venta
   const agregarProductoAlTicket = (producto, varianteNombre, toppingsSeleccionados, cantidad) => {
     const toppingsKey = toppingsSeleccionados.map(t => t.id).sort().join(",");
     const precioUnitario = producto.price + toppingsSeleccionados.reduce((acc, t) => acc + (Number(t.precioExtra) || 0), 0);
@@ -475,7 +475,7 @@ export default function POSPage() {
 
   const handleAgregarAlTicket = () => {
     if (!itemActual.productoId || !productoSeleccionado) {
-      alert("Selecciona un producto del catálogo.");
+      alert("Selecciona un producto del catÃ¡logo.");
       return;
     }
     if (esGastronomiaConVariantes && !itemActual.varianteNombre) {
@@ -484,7 +484,7 @@ export default function POSPage() {
     }
     const cantidad = Number(itemActual.cantidad) || 1;
     if (cantidad <= 0) {
-      alert("Indica una cantidad válida.");
+      alert("Indica una cantidad vÃ¡lida.");
       return;
     }
 
@@ -499,14 +499,14 @@ export default function POSPage() {
     inputProductoRef.current?.focus();
   };
 
-  // Enter tras escanear código de barras: si el producto no exige variante, se agrega 1 unidad directo al ticket
+  // Enter tras escanear cÃ³digo de barras: si el producto no exige variante, se agrega 1 unidad directo al ticket
   const handleBusquedaProductoKeyDown = (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
     const match = productosInventario.find(p => p.barcode && p.barcode === busquedaProducto.trim());
     if (!match) return;
 
-    const requiereVariante = match.nicho === "Gastronomía & Heladería" && (match.variantes || []).length > 0;
+    const requiereVariante = match.nicho === "GastronomÃ­a & HeladerÃ­a" && (match.variantes || []).length > 0;
     if (requiereVariante) {
       handleSeleccionarProducto(match);
       return;
@@ -518,7 +518,7 @@ export default function POSPage() {
     inputProductoRef.current?.focus();
   };
 
-  // Suma de recargos de los toppings actualmente seleccionados para el ítem en configuración
+  // Suma de recargos de los toppings actualmente seleccionados para el Ã­tem en configuraciÃ³n
   const sumaToppingsSeleccionados = (productoSeleccionado?.toppings || [])
     .filter(t => itemActual.toppingsSeleccionadosIds.includes(t.id))
     .reduce((acc, t) => acc + (Number(t.precioExtra) || 0), 0);
@@ -565,7 +565,7 @@ export default function POSPage() {
 
   const requiereDatosTransferenciaVenta = METODOS_CON_REFERENCIA.includes(formVenta.metodoPago);
 
-  // Candado de crédito: solo se exige autorización si la venta a crédito deja saldo pendiente real
+  // Candado de crÃ©dito: solo se exige autorizaciÃ³n si la venta a crÃ©dito deja saldo pendiente real
   const saldoProyectadoCobro = Math.max(0, totalFacturaUsd - (formVenta.condicionVenta === "CONTADO" ? totalFacturaUsd : montoAbonadoUsd));
   const requiereAutorizacionSupervisor = formVenta.condicionVenta === "CREDITO" && saldoProyectadoCobro > 0;
 
@@ -579,10 +579,10 @@ export default function POSPage() {
     formVenta.referencia.trim().length > 0 &&
     referenciasUsadas.has(formVenta.referencia.trim());
 
-  // Datos y mensaje para el despacho de cobro por Pago Móvil vía WhatsApp
+  // Datos y mensaje para el despacho de cobro por Pago MÃ³vil vÃ­a WhatsApp
   const bancoReceptorSeleccionado = bancosVenezuela.find(b => b.codigo === formVenta.bancoReceptor) || null;
   const montoPagoMovilUsd = formVenta.condicionVenta === "CONTADO" ? totalFacturaUsd : montoAbonadoUsd;
-  const mensajePagoMovil = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza el Pago Móvil con estos datos:\n🏦 Banco: *${bancoReceptorSeleccionado ? bancoReceptorSeleccionado.display : "(configura el banco receptor)"}*\n📱 Teléfono: *${configPagoMovil.telefonoReceptor || "(sin configurar)"}*\n🆔 Cédula/RIF: *${configPagoMovil.rifReceptor || "(sin configurar)"}*\n👤 Titular: *${configPagoMovil.nombreTitular || "(sin configurar)"}*\n💰 Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (≈ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nPor favor responde a este mensaje con la captura del comprobante o el número de referencia para emitir tu factura.`;
+  const mensajePagoMovil = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza el Pago MÃ³vil con estos datos:\nðŸ¦ Banco: *${bancoReceptorSeleccionado ? bancoReceptorSeleccionado.display : "(configura el banco receptor)"}*\nðŸ“± TelÃ©fono: *${configPagoMovil.telefonoReceptor || "(sin configurar)"}*\nðŸ†” CÃ©dula/RIF: *${configPagoMovil.rifReceptor || "(sin configurar)"}*\nðŸ‘¤ Titular: *${configPagoMovil.nombreTitular || "(sin configurar)"}*\nðŸ’° Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (â‰ˆ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nPor favor responde a este mensaje con la captura del comprobante o el nÃºmero de referencia para emitir tu factura.`;
 
   const handleEnviarDatosPagoMovil = () => {
     const numero = `${(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`;
@@ -595,11 +595,11 @@ export default function POSPage() {
       setCopiadoDatosPagoMovil(true);
       setTimeout(() => setCopiadoDatosPagoMovil(false), 1500);
     } catch (e) {
-      alert("No se pudo copiar automáticamente. Copia el mensaje manualmente.");
+      alert("No se pudo copiar automÃ¡ticamente. Copia el mensaje manualmente.");
     }
   };
 
-  // Crea la intención de pago con token y abre WhatsApp con el link de autoservicio
+  // Crea la intenciÃ³n de pago con token y abre WhatsApp con el link de autoservicio
   const handleEnviarLinkPagoMovil = () => {
     const token = generarTokenPago();
     const nuevaIntencion = {
@@ -620,11 +620,11 @@ export default function POSPage() {
 
     const link = `${obtenerOrigen()}/pago/${token}`;
     const numero = `${(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`;
-    const mensaje = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza tu Pago Móvil desde este link seguro:\n${link}\n\n💰 Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (≈ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nAl confirmar tu pago allí, tu factura queda lista para validarse en caja.`;
+    const mensaje = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza tu Pago MÃ³vil desde este link seguro:\n${link}\n\nðŸ’° Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (â‰ˆ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nAl confirmar tu pago allÃ­, tu factura queda lista para validarse en caja.`;
     window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`, "_blank");
   };
 
-  // Escucha reactiva (Firestore en vivo, o polling local): detecta si el cliente ya reportó el comprobante
+  // Escucha reactiva (Firestore en vivo, o polling local): detecta si el cliente ya reportÃ³ el comprobante
   useEffect(() => {
     if (!tokenPagoActivo) return undefined;
     return escucharDocumento("duna_pagos_pendientes", tokenPagoActivo, (pago) => {
@@ -635,7 +635,7 @@ export default function POSPage() {
     }, 2000);
   }, [tokenPagoActivo]);
 
-  // Genera el QR (data URL) apuntando al portal móvil del supervisor cada vez que hay un token nuevo pendiente
+  // Genera el QR (data URL) apuntando al portal mÃ³vil del supervisor cada vez que hay un token nuevo pendiente
   useEffect(() => {
     if (!autorizacionActual || autorizacionActual.status !== "PENDIENTE") return undefined;
     let cancelado = false;
@@ -662,7 +662,7 @@ export default function POSPage() {
     return () => clearInterval(intervalo);
   }, [modalAutorizacionAbierto, autorizacionActual]);
 
-  // Listener reactivo (Firestore en vivo, o polling local): detecta si el supervisor ya aprobó/rechazó desde su teléfono
+  // Listener reactivo (Firestore en vivo, o polling local): detecta si el supervisor ya aprobÃ³/rechazÃ³ desde su telÃ©fono
   useEffect(() => {
     if (!modalAutorizacionAbierto || autorizacionActual?.status !== "PENDIENTE") return undefined;
     return escucharDocumento("duna_autorizaciones_credito", autorizacionActual.tokenAuth, (match) => {
@@ -740,7 +740,7 @@ export default function POSPage() {
       autorizadoPor: autorizadoPor || null,
     };
 
-    // Descontar inventario de CADA renglón del ticket (con soporte de variantes/sabores)
+    // Descontar inventario de CADA renglÃ³n del ticket (con soporte de variantes/sabores)
     let productosActualizados = [...productosInventario];
     renglonesVenta.forEach(r => {
       productosActualizados = productosActualizados.map(p => {
@@ -759,7 +759,7 @@ export default function POSPage() {
     });
     actualizarProductosInventario(productosActualizados);
 
-    // Escudo anti-duplicados: upsert por cédula/RIF normalizada (clave única)
+    // Escudo anti-duplicados: upsert por cÃ©dula/RIF normalizada (clave Ãºnica)
     const clienteExistente = documentoFinal
       ? clientes.find(c => normalizarDocumento(c.documento) === documentoFinal)
       : clientes.find(c => !c.documento && c.nombre.toLowerCase() === formVenta.cliente.toLowerCase());
@@ -802,20 +802,20 @@ export default function POSPage() {
     setModalAuditoriaAbierto(false);
     setTokenPagoActivo(null);
     setAvisoClienteEnEspera(null);
-    // Venta formalizada: el borrador de recuperación ya no aplica
+    // Venta formalizada: el borrador de recuperaciÃ³n ya no aplica
     localStorage.removeItem("duna_pos_draft");
     setDraftDetectado(null);
     inputProductoRef.current?.focus();
   };
 
-  // Tras el check verde de aprobación: continúa la facturación automáticamente
+  // Tras el check verde de aprobaciÃ³n: continÃºa la facturaciÃ³n automÃ¡ticamente
   useEffect(() => {
     if (autorizacionActual?.status !== "APROBADA") return undefined;
     const timeout = setTimeout(() => {
       registrarVenta(autorizacionActual.supervisorInfo);
     }, 1400);
     return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- registrarVenta se recrea cada render; solo debe reprogramarse cuando cambia el estado de la autorización
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registrarVenta se recrea cada render; solo debe reprogramarse cuando cambia el estado de la autorizaciÃ³n
   }, [autorizacionActual]);
 
   const handleValidarPinEmergencia = () => {
@@ -839,7 +839,7 @@ export default function POSPage() {
     registrarVenta(supervisorInfo);
   };
 
-  // Valida el formulario y decide si hace falta autorización de supervisor antes de registrar
+  // Valida el formulario y decide si hace falta autorizaciÃ³n de supervisor antes de registrar
   const handleCrearVenta = (e) => {
     e.preventDefault();
     if (!formVenta.cliente || renglonesVenta.length === 0) {
@@ -849,7 +849,7 @@ export default function POSPage() {
 
     if (formVenta.numeroDocumento.trim().length < 5) {
       setErrorDocumento(true);
-      alert("La Cédula o RIF es obligatoria para emitir la factura.");
+      alert("La CÃ©dula o RIF es obligatoria para emitir la factura.");
       return;
     }
     setErrorDocumento(false);
@@ -860,16 +860,16 @@ export default function POSPage() {
     if (abonado > 0 && requiereDatosTransferenciaVenta) {
       const ref = formVenta.referencia.trim();
       if (!ref) {
-        alert("Indica el número de referencia del pago.");
+        alert("Indica el nÃºmero de referencia del pago.");
         return;
       }
       if (referenciasUsadas.has(ref)) {
-        alert("Esta referencia ya fue registrada anteriormente. Verifica el número.");
+        alert("Esta referencia ya fue registrada anteriormente. Verifica el nÃºmero.");
         return;
       }
     }
 
-    // Candado de autorización: una venta a crédito que deja saldo pendiente exige el visto bueno de un supervisor
+    // Candado de autorizaciÃ³n: una venta a crÃ©dito que deja saldo pendiente exige el visto bueno de un supervisor
     const saldoProyectado = Math.max(0, totalFacturaUsd - abonado);
     if (!esContado && saldoProyectado > 0 && !autorizacionCredito) {
       abrirModalAutorizacion();
@@ -880,7 +880,7 @@ export default function POSPage() {
   };
 
   const handleLimpiarTicket = () => {
-    if (renglonesVenta.length > 0 && !confirm("¿Vaciar el ticket actual y empezar de nuevo?")) return;
+    if (renglonesVenta.length > 0 && !confirm("Â¿Vaciar el ticket actual y empezar de nuevo?")) return;
     setModalCobroAbierto(false);
     setModalAutorizacionAbierto(false);
     setAutorizacionActual(null);
@@ -898,7 +898,7 @@ export default function POSPage() {
     inputProductoRef.current?.focus();
   };
 
-  // --- Borrador de recuperación (crash recovery) ---
+  // --- Borrador de recuperaciÃ³n (crash recovery) ---
 
   const totalBorrador = (draftDetectado?.renglonesVenta || []).reduce((acc, r) => acc + r.subtotal, 0);
 
@@ -997,7 +997,7 @@ export default function POSPage() {
   };
 
   const handleEliminarVentaEnEspera = (id) => {
-    if (!confirm("¿Eliminar esta venta en espera?")) return;
+    if (!confirm("Â¿Eliminar esta venta en espera?")) return;
     actualizarVentasEnEspera(ventasEnEspera.filter(v => v.id !== id));
   };
 
@@ -1007,7 +1007,7 @@ export default function POSPage() {
     const lineasProductos = (cuenta.renglones || []).map(r => {
       const variantePart = r.variante ? ` (${r.variante})` : "";
       const extrasPart = r.toppings && r.toppings.length > 0 ? ` [Extras: ${r.toppings.map(t => t.nombre).join(", ")}]` : "";
-      return `• ${r.cantidad}x ${r.nombre}${variantePart}${extrasPart} - $${r.subtotal.toFixed(2)}`;
+      return `â€¢ ${r.cantidad}x ${r.nombre}${variantePart}${extrasPart} - $${r.subtotal.toFixed(2)}`;
     }).join("\n");
 
     const mensaje = `Estimado(a) *${cuenta.cliente}*, le saludamos de *D'una*. Le compartimos el estado de su cuenta:\n${lineasProductos}\nFactura: *${cuenta.id}* | Total: *$${cuenta.total.toFixed(2)}* | Abonado: *$${cuenta.abonado.toFixed(2)}* | Saldo pendiente: *$${cuenta.saldo.toFixed(2)} USD* (*Bs. ${saldoBs}* a Tasa BCV: Bs. ${tasaBcv}). Quedamos atentos a su comprobante.`;
@@ -1034,7 +1034,7 @@ export default function POSPage() {
                 <span className="text-sm font-black text-slate-900">Terminal POS</span>
                 <span className="text-[11px] bg-sky-50 text-sky-700 px-2.5 py-0.5 rounded-full font-bold border border-sky-200">CAJA</span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium truncate">Mostrador de facturación rápida</p>
+              <p className="text-[11px] text-slate-400 font-medium truncate">Mostrador de facturaciÃ³n rÃ¡pida</p>
             </div>
           </div>
 
@@ -1043,8 +1043,8 @@ export default function POSPage() {
               <div className="hidden sm:flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-2xl px-3 py-2">
                 <Wallet className="w-4 h-4 text-emerald-700" />
                 <div className="leading-tight">
-                  <span className="text-[11px] font-black text-emerald-800 block">Turno {turnoActivo.id} — ABIERTO</span>
-                  <span className="text-[10px] text-emerald-600">Apertura: {turnoActivo.fechaApertura} · {turnoActivo.ventasIds.length} venta(s)</span>
+                  <span className="text-[11px] font-black text-emerald-800 block">Turno {turnoActivo.id} â€” ABIERTO</span>
+                  <span className="text-[10px] text-emerald-600">Apertura: {turnoActivo.fechaApertura} Â· {turnoActivo.ventasIds.length} venta(s)</span>
                 </div>
               </div>
             ) : (
@@ -1060,7 +1060,7 @@ export default function POSPage() {
               </button>
             )}
             <Link href="/cxc" className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition whitespace-nowrap">
-              Administración CXC →
+              AdministraciÃ³n CXC â†’
             </Link>
           </div>
         </div>
@@ -1069,7 +1069,7 @@ export default function POSPage() {
       {/* Espacio de Trabajo Inmersivo */}
       <main className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6 flex-1 w-full">
 
-        {/* Banner de Recuperación de Borrador (crash recovery) */}
+        {/* Banner de RecuperaciÃ³n de Borrador (crash recovery) */}
         {draftDetectado && (
           <div className="mb-5 rounded-3xl border border-amber-300 bg-gradient-to-r from-amber-50 to-emerald-50 p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -1077,17 +1077,17 @@ export default function POSPage() {
                 <AlertTriangle className="w-4 h-4" />
               </div>
               <p className="text-[12px] font-bold text-slate-700 min-w-0">
-                ⚠️ Se detectó una venta en curso no finalizada para{" "}
+                âš ï¸ Se detectÃ³ una venta en curso no finalizada para{" "}
                 <span className="text-slate-900">{draftDetectado.cliente?.nombre || "Consumidor Final"}</span>
-                {" "}({(draftDetectado.renglonesVenta || []).length} ítem{(draftDetectado.renglonesVenta || []).length === 1 ? "" : "s"} - ${totalBorrador.toFixed(2)}).
+                {" "}({(draftDetectado.renglonesVenta || []).length} Ã­tem{(draftDetectado.renglonesVenta || []).length === 1 ? "" : "s"} - ${totalBorrador.toFixed(2)}).
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button type="button" onClick={handleRetomarBorrador} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition flex items-center gap-1.5">
-                🔄 Retomar Venta
+                ðŸ”„ Retomar Venta
               </button>
               <button type="button" onClick={handleDescartarBorrador} className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5">
-                🗑️ Descartar
+                ðŸ—‘ï¸ Descartar
               </button>
             </div>
           </div>
@@ -1098,13 +1098,13 @@ export default function POSPage() {
           {/* Columna Izquierda / Central: Cliente + Producto */}
           <div className="space-y-5 min-w-0">
 
-            {/* Cliente rápido */}
+            {/* Cliente rÃ¡pido */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
               <h3 className="text-xs font-black text-slate-700 uppercase tracking-wide">Cliente</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div className="relative">
                   <label className="text-[11px] font-bold text-slate-600 block mb-1 flex items-center justify-between">
-                    <span>Cédula / RIF *</span>
+                    <span>CÃ©dula / RIF *</span>
                     {clienteCoincidenteActual ? (
                       <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-600">
                         <ShieldCheck className="w-3 h-3" /> Cliente Registrado
@@ -1145,14 +1145,14 @@ export default function POSPage() {
                     />
                   </div>
                   {errorDocumento && (
-                    <p className="text-[10px] text-rose-600 font-bold mt-1">La Cédula o RIF es obligatoria para emitir la factura.</p>
+                    <p className="text-[10px] text-rose-600 font-bold mt-1">La CÃ©dula o RIF es obligatoria para emitir la factura.</p>
                   )}
                   {campoActivoSugerencia === "documento" && filtrarClientes(formVenta.numeroDocumento).length > 0 && (
                     <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
                       {filtrarClientes(formVenta.numeroDocumento).map((cl, i) => (
                         <button key={i} type="button" onMouseDown={() => handleSeleccionarCliente(cl)} className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0">
                           <span className="font-bold text-slate-800 block text-xs">{cl.nombre}</span>
-                          <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} • {cl.codigoPais}{cl.telefono}</span>
+                          <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} â€¢ {cl.codigoPais}{cl.telefono}</span>
                         </button>
                       ))}
                     </div>
@@ -1175,7 +1175,7 @@ export default function POSPage() {
                       {filtrarClientes(formVenta.cliente).map((cl, i) => (
                         <button key={i} type="button" onMouseDown={() => handleSeleccionarCliente(cl)} className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0">
                           <span className="font-bold text-slate-800 block text-xs">{cl.nombre}</span>
-                          <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} • {cl.codigoPais}{cl.telefono}</span>
+                          <span className="text-[10px] text-slate-400">{cl.documento || "Sin documento"} â€¢ {cl.codigoPais}{cl.telefono}</span>
                         </button>
                       ))}
                     </div>
@@ -1189,7 +1189,7 @@ export default function POSPage() {
                 }`}>
                   {cantidadFacturasPendientes > 0 ? (
                     <>
-                      <span>⚠️ Deuda: ${deudaTotalUsd.toFixed(2)} (~Bs. {deudaTotalBs.toFixed(2)}) • {cantidadFacturasPendientes} fact.</span>
+                      <span>âš ï¸ Deuda: ${deudaTotalUsd.toFixed(2)} (~Bs. {deudaTotalBs.toFixed(2)}) â€¢ {cantidadFacturasPendientes} fact.</span>
                       <button
                         type="button"
                         onClick={() => setModalAuditoriaAbierto(true)}
@@ -1199,27 +1199,27 @@ export default function POSPage() {
                       </button>
                     </>
                   ) : (
-                    <span>✓ Al Día</span>
+                    <span>âœ“ Al DÃ­a</span>
                   )}
                 </div>
               )}
 
               {avisoClienteEnEspera && (
                 <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-sky-700">
-                  <span>💡 Este cliente tiene un ticket en espera de ${avisoClienteEnEspera.total.toFixed(2)}. ¿Deseas retomarlo?</span>
+                  <span>ðŸ’¡ Este cliente tiene un ticket en espera de ${avisoClienteEnEspera.total.toFixed(2)}. Â¿Deseas retomarlo?</span>
                   <button
                     type="button"
                     onClick={() => handleRetomarVentaEnEspera(avisoClienteEnEspera)}
                     className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-[10px] font-black transition shrink-0"
                   >
-                    Sí, retomar
+                    SÃ­, retomar
                   </button>
                 </div>
               )}
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Código País</label>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">CÃ³digo PaÃ­s</label>
                   <select
                     value={formVenta.paisCodigo}
                     onChange={(e) => setFormVenta({ ...formVenta, paisCodigo: e.target.value })}
@@ -1231,7 +1231,7 @@ export default function POSPage() {
                   </select>
                 </div>
                 <div className="col-span-2">
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Teléfono (WhatsApp)</label>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">TelÃ©fono (WhatsApp)</label>
                   <input
                     type="tel"
                     value={formVenta.telefono}
@@ -1243,18 +1243,18 @@ export default function POSPage() {
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">Dirección</label>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">DirecciÃ³n</label>
                 <input
                   type="text"
                   value={formVenta.direccion}
                   onChange={(e) => setFormVenta({ ...formVenta, direccion: e.target.value })}
-                  placeholder="Dirección de entrega o fiscal"
+                  placeholder="DirecciÃ³n de entrega o fiscal"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
                 />
               </div>
             </div>
 
-            {/* Producto / Código de Barras */}
+            {/* Producto / CÃ³digo de Barras */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
               <h3 className="text-xs font-black text-slate-700 uppercase tracking-wide">Producto</h3>
               <div className="relative">
@@ -1268,7 +1268,7 @@ export default function POSPage() {
                     onFocus={() => setMostrarSugerenciasProducto(true)}
                     onBlur={() => setTimeout(() => setMostrarSugerenciasProducto(false), 150)}
                     onKeyDown={handleBusquedaProductoKeyDown}
-                    placeholder="Escanear código de barras o buscar por nombre / SKU..."
+                    placeholder="Escanear cÃ³digo de barras o buscar por nombre / SKU..."
                     autoComplete="off"
                     autoFocus
                     className="w-full pl-9 pr-3 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#FE6712]"
@@ -1283,11 +1283,11 @@ export default function POSPage() {
                         onMouseDown={() => handleSeleccionarProducto(p)}
                         className="w-full flex items-center gap-2.5 text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-100 last:border-0"
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- miniatura dinámica (Base64/URL arbitraria), incompatible con next/image sin configurar dominios */}
+                        {/* eslint-disable-next-line @next/next/no-img-element -- miniatura dinÃ¡mica (Base64/URL arbitraria), incompatible con next/image sin configurar dominios */}
                         <img src={p.image} alt="" className="w-8 h-8 rounded-lg object-cover bg-slate-100 shrink-0" />
                         <div className="min-w-0 flex-1">
                           <span className="font-bold text-slate-800 text-xs block truncate">{p.name}</span>
-                          <span className="text-[10px] text-slate-400">{p.code} • Stock: {p.stock}</span>
+                          <span className="text-[10px] text-slate-400">{p.code} â€¢ Stock: {p.stock}</span>
                         </div>
                         <span className="text-xs font-black text-slate-900 shrink-0">${p.price.toFixed(2)}</span>
                       </button>
@@ -1298,12 +1298,12 @@ export default function POSPage() {
 
               {productosInventario.length === 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-2">
-                  <p className="text-[11px] font-bold text-amber-700">Aún no hay productos registrados en el catálogo.</p>
+                  <p className="text-[11px] font-bold text-amber-700">AÃºn no hay productos registrados en el catÃ¡logo.</p>
                   <Link
                     href="/inventario"
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition"
                   >
-                    Registrar o importar productos →
+                    Registrar o importar productos â†’
                   </Link>
                 </div>
               )}
@@ -1395,7 +1395,7 @@ export default function POSPage() {
                     disabled={ventasEnEspera.length === 0}
                     className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-bold transition disabled:opacity-40 disabled:pointer-events-none"
                   >
-                    ⏸ En Espera ({ventasEnEspera.length})
+                    â¸ En Espera ({ventasEnEspera.length})
                   </button>
                   <button
                     onClick={handleLimpiarTicket}
@@ -1410,7 +1410,7 @@ export default function POSPage() {
               <div className="flex-1 overflow-y-auto p-4">
                 {renglonesVenta.length === 0 ? (
                   <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center">
-                    <p className="text-[11px] text-slate-400">Escanee un código de barras o busque un producto para iniciar el ticket.</p>
+                    <p className="text-[11px] text-slate-400">Escanee un cÃ³digo de barras o busque un producto para iniciar el ticket.</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1436,7 +1436,7 @@ export default function POSPage() {
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-2">
                           <div className="flex items-center gap-1">
-                            <button type="button" onClick={() => handleDecrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 flex items-center justify-center font-bold">−</button>
+                            <button type="button" onClick={() => handleDecrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 flex items-center justify-center font-bold">âˆ’</button>
                             <input
                               type="number"
                               min="1"
@@ -1494,7 +1494,7 @@ export default function POSPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-lg font-black text-slate-900">Cobrar / Finalizar Venta</h3>
-                <p className="text-xs text-slate-400">{formVenta.cliente || "Consumidor Final"} • Total ${totalFacturaUsd.toFixed(2)}</p>
+                <p className="text-xs text-slate-400">{formVenta.cliente || "Consumidor Final"} â€¢ Total ${totalFacturaUsd.toFixed(2)}</p>
               </div>
               <button onClick={() => setModalCobroAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
                 <X className="w-4 h-4" />
@@ -1503,10 +1503,10 @@ export default function POSPage() {
 
             <form onSubmit={handleCrearVenta} className="space-y-4">
               <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Condición de Venta</label>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1.5">CondiciÃ³n de Venta</label>
                 <div className="flex items-center gap-1.5">
                   <button type="button" onClick={() => setFormVenta({ ...formVenta, condicionVenta: "CONTADO" })} className={pillClase(formVenta.condicionVenta === "CONTADO")}>Solo Contado</button>
-                  <button type="button" onClick={() => setFormVenta({ ...formVenta, condicionVenta: "CREDITO" })} className={pillClase(formVenta.condicionVenta === "CREDITO")}>Permite Crédito</button>
+                  <button type="button" onClick={() => setFormVenta({ ...formVenta, condicionVenta: "CREDITO" })} className={pillClase(formVenta.condicionVenta === "CREDITO")}>Permite CrÃ©dito</button>
                 </div>
               </div>
 
@@ -1514,12 +1514,12 @@ export default function POSPage() {
                 autorizacionCredito ? (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 flex items-center gap-2 text-[11px] font-bold text-emerald-700">
                     <ShieldCheck className="w-4 h-4 shrink-0" />
-                    <span>Autorizado por {autorizacionCredito.supervisorNombre} · {autorizacionCredito.horaAutorizacion}</span>
+                    <span>Autorizado por {autorizacionCredito.supervisorNombre} Â· {autorizacionCredito.horaAutorizacion}</span>
                   </div>
                 ) : (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 flex items-center gap-2 text-[11px] font-bold text-amber-700">
                     <Lock className="w-4 h-4 shrink-0" />
-                    <span>Esta venta a crédito requiere autorización de un supervisor antes de registrarse.</span>
+                    <span>Esta venta a crÃ©dito requiere autorizaciÃ³n de un supervisor antes de registrarse.</span>
                   </div>
                 )
               )}
@@ -1547,8 +1547,8 @@ export default function POSPage() {
                   {Number(formVenta.montoAbonadoInput) > 0 && (
                     <p className="text-[11px] text-emerald-600 font-bold mt-1.5">
                       {formVenta.monedaAbono === "ves"
-                        ? `≈ $${montoAbonadoUsd.toFixed(2)} USD`
-                        : `≈ Bs. ${formatearBs(montoAbonadoUsd, tasaBcv)}`}
+                        ? `â‰ˆ $${montoAbonadoUsd.toFixed(2)} USD`
+                        : `â‰ˆ Bs. ${formatearBs(montoAbonadoUsd, tasaBcv)}`}
                     </p>
                   )}
                 </div>
@@ -1558,7 +1558,7 @@ export default function POSPage() {
                 <div className="space-y-3 pt-3 border-t border-dashed border-slate-200">
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1 flex items-center justify-between">
-                      <span>Método de Pago</span>
+                      <span>MÃ©todo de Pago</span>
                       <button type="button" onClick={abrirModalConfigPagoMovil} className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-[#FE6712] transition">
                         <Settings className="w-3 h-3" /> Configurar datos de cobro
                       </button>
@@ -1587,7 +1587,7 @@ export default function POSPage() {
                           required
                           value={formVenta.referencia}
                           onChange={(e) => setFormVenta({ ...formVenta, referencia: e.target.value })}
-                          placeholder="N° de referencia *"
+                          placeholder="NÂ° de referencia *"
                           className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none ${
                             referenciaVentaDuplicada ? "bg-rose-50 border-rose-400" : "bg-slate-50 border-slate-200 focus:border-[#FE6712]"
                           }`}
@@ -1596,19 +1596,19 @@ export default function POSPage() {
                           <p className="text-[10px] text-rose-600 font-bold mt-1">Esta referencia ya fue registrada anteriormente.</p>
                         )}
                       </div>
-                      <input type="text" value={formVenta.titular} onChange={(e) => setFormVenta({ ...formVenta, titular: e.target.value })} placeholder="Teléfono / Titular" className="col-span-2 w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                      <input type="text" value={formVenta.titular} onChange={(e) => setFormVenta({ ...formVenta, titular: e.target.value })} placeholder="TelÃ©fono / Titular" className="col-span-2 w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                     </div>
                   )}
-                  {formVenta.metodoPago === "Pago Móvil" && (
+                  {formVenta.metodoPago === "Pago MÃ³vil" && (
                     <div className="space-y-2 pt-1">
                       <button
                         type="button"
                         onClick={handleEnviarLinkPagoMovil}
                         disabled={!formVenta.telefono}
-                        title={formVenta.telefono ? "Crear link de autoservicio y enviarlo por WhatsApp" : "Sin teléfono del cliente registrado"}
+                        title={formVenta.telefono ? "Crear link de autoservicio y enviarlo por WhatsApp" : "Sin telÃ©fono del cliente registrado"}
                         className="w-full px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none shadow-sm shadow-orange-500/20"
                       >
-                        <Smartphone className="w-3.5 h-3.5" /> Enviar Link de Pago Móvil por WhatsApp
+                        <Smartphone className="w-3.5 h-3.5" /> Enviar Link de Pago MÃ³vil por WhatsApp
                       </button>
 
                       {pagoMovilActivo?.status === "REPORTADO" ? (
@@ -1617,8 +1617,8 @@ export default function POSPage() {
                             <Check className="w-4 h-4" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <span className="text-[11px] font-black text-emerald-700 block">✓ ¡Comprobante reportado por el cliente!</span>
-                            <span className="text-[10px] text-emerald-600">Referencia: {pagoMovilActivo.referenciaReportada || "—"}</span>
+                            <span className="text-[11px] font-black text-emerald-700 block">âœ“ Â¡Comprobante reportado por el cliente!</span>
+                            <span className="text-[10px] text-emerald-600">Referencia: {pagoMovilActivo.referenciaReportada || "â€”"}</span>
                           </div>
                           {pagoMovilActivo.imagenComprobante && (
                             /* eslint-disable-next-line @next/next/no-img-element -- miniatura Base64 generada por el cliente, incompatible con next/image */
@@ -1631,7 +1631,7 @@ export default function POSPage() {
                           )}
                         </div>
                       ) : tokenPagoActivo ? (
-                        <p className="text-[10px] text-slate-400 text-center">Esperando que el cliente reporte su pago desde el link enviado…</p>
+                        <p className="text-[10px] text-slate-400 text-center">Esperando que el cliente reporte su pago desde el link enviadoâ€¦</p>
                       ) : null}
 
                       <div className="flex flex-col sm:flex-row items-center gap-2">
@@ -1639,17 +1639,17 @@ export default function POSPage() {
                           type="button"
                           onClick={handleEnviarDatosPagoMovil}
                           disabled={!formVenta.telefono}
-                          title={formVenta.telefono ? "Enviar datos de pago móvil por WhatsApp" : "Sin teléfono del cliente registrado"}
+                          title={formVenta.telefono ? "Enviar datos de pago mÃ³vil por WhatsApp" : "Sin telÃ©fono del cliente registrado"}
                           className="w-full sm:flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
                         >
-                          <MessageCircle className="w-3.5 h-3.5" /> Enviar Datos Pago Móvil por WhatsApp
+                          <MessageCircle className="w-3.5 h-3.5" /> Enviar Datos Pago MÃ³vil por WhatsApp
                         </button>
                         <button
                           type="button"
                           onClick={handleCopiarDatosPagoMovil}
                           className="w-full sm:w-auto px-3 py-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 shrink-0"
                         >
-                          <Copy className="w-3.5 h-3.5" /> {copiadoDatosPagoMovil ? "¡Copiado!" : "Copiar Datos"}
+                          <Copy className="w-3.5 h-3.5" /> {copiadoDatosPagoMovil ? "Â¡Copiado!" : "Copiar Datos"}
                         </button>
                       </div>
                     </div>
@@ -1670,7 +1670,7 @@ export default function POSPage() {
                   disabled={formVenta.numeroDocumento.trim().length < 5 || renglonesVenta.length === 0 || referenciaVentaDuplicada}
                   title={
                     formVenta.numeroDocumento.trim().length < 5
-                      ? "La Cédula o RIF es obligatoria para emitir la factura"
+                      ? "La CÃ©dula o RIF es obligatoria para emitir la factura"
                       : renglonesVenta.length === 0
                       ? "Agrega al menos un producto al ticket"
                       : referenciaVentaDuplicada
@@ -1684,7 +1684,7 @@ export default function POSPage() {
                   }`}
                 >
                   {requiereAutorizacionSupervisor && !autorizacionCredito ? (
-                    <><Lock className="w-4 h-4" /> Solicitar Autorización</>
+                    <><Lock className="w-4 h-4" /> Solicitar AutorizaciÃ³n</>
                   ) : (
                     <><Check className="w-4 h-4" /> Registrar Factura</>
                   )}
@@ -1696,14 +1696,14 @@ export default function POSPage() {
         </div>
       )}
 
-      {/* Modal de Autorización de Supervisor (QR dinámico) */}
+      {/* Modal de AutorizaciÃ³n de Supervisor (QR dinÃ¡mico) */}
       {modalAutorizacionAbierto && autorizacionActual && (
         <div className="fixed inset-0 z-[70] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-base font-black text-slate-900">Autorización de Supervisor Requerida</h3>
-                <p className="text-[11px] text-slate-400">Venta a crédito por ${autorizacionActual.montoUsd.toFixed(2)} (Bs. {formatearBs(autorizacionActual.montoUsd, tasaBcv)})</p>
+                <h3 className="text-base font-black text-slate-900">AutorizaciÃ³n de Supervisor Requerida</h3>
+                <p className="text-[11px] text-slate-400">Venta a crÃ©dito por ${autorizacionActual.montoUsd.toFixed(2)} (Bs. {formatearBs(autorizacionActual.montoUsd, tasaBcv)})</p>
               </div>
               <button onClick={() => setModalAutorizacionAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition shrink-0">
                 <X className="w-4 h-4" />
@@ -1715,25 +1715,25 @@ export default function POSPage() {
                 <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto animate-pulse">
                   <Check className="w-8 h-8" />
                 </div>
-                <h4 className="text-base font-black text-emerald-700">¡Autorización Aprobada!</h4>
+                <h4 className="text-base font-black text-emerald-700">Â¡AutorizaciÃ³n Aprobada!</h4>
                 <p className="text-xs text-slate-500">
                   Por <span className="font-bold text-slate-800">{autorizacionActual.supervisorInfo?.supervisorNombre}</span>
                 </p>
-                <p className="text-[11px] text-slate-400">Continuando con el registro de la factura…</p>
+                <p className="text-[11px] text-slate-400">Continuando con el registro de la facturaâ€¦</p>
               </div>
             ) : autorizacionActual.status === "RECHAZADA" ? (
               <div className="text-center space-y-3 py-2">
                 <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
                   <X className="w-8 h-8" />
                 </div>
-                <h4 className="text-base font-black text-rose-700">Autorización Rechazada</h4>
-                <p className="text-xs text-slate-500">El supervisor rechazó esta venta a crédito desde su teléfono.</p>
+                <h4 className="text-base font-black text-rose-700">AutorizaciÃ³n Rechazada</h4>
+                <p className="text-xs text-slate-500">El supervisor rechazÃ³ esta venta a crÃ©dito desde su telÃ©fono.</p>
                 <div className="flex flex-col gap-2 pt-2">
                   <button type="button" onClick={abrirModalAutorizacion} className="w-full px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition">
-                    🔄 Solicitar de Nuevo
+                    ðŸ”„ Solicitar de Nuevo
                   </button>
                   <button type="button" onClick={handlePausarPorAutorizacion} className="w-full px-3 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-bold transition">
-                    ⏸ Pausar y Mandar a Administración
+                    â¸ Pausar y Mandar a AdministraciÃ³n
                   </button>
                 </div>
               </div>
@@ -1742,14 +1742,14 @@ export default function POSPage() {
                 <div className="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
                   <AlertTriangle className="w-8 h-8" />
                 </div>
-                <h4 className="text-base font-black text-amber-700">Código QR Expirado</h4>
-                <p className="text-xs text-slate-500">El supervisor no escaneó el código a tiempo.</p>
+                <h4 className="text-base font-black text-amber-700">CÃ³digo QR Expirado</h4>
+                <p className="text-xs text-slate-500">El supervisor no escaneÃ³ el cÃ³digo a tiempo.</p>
                 <div className="flex flex-col gap-2 pt-2">
                   <button type="button" onClick={abrirModalAutorizacion} className="w-full px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition">
-                    🔄 Regenerar QR
+                    ðŸ”„ Regenerar QR
                   </button>
                   <button type="button" onClick={handlePausarPorAutorizacion} className="w-full px-3 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-bold transition">
-                    ⏸ Pausar y Mandar a Administración
+                    â¸ Pausar y Mandar a AdministraciÃ³n
                   </button>
                 </div>
               </div>
@@ -1757,14 +1757,14 @@ export default function POSPage() {
               <div className="space-y-3">
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-center min-h-[180px]">
                   {qrDataUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- imagen data URL generada en cliente por la librería qrcode, incompatible con next/image
-                    <img src={qrDataUrl} alt="Código QR de autorización" className="w-44 h-44" />
+                    // eslint-disable-next-line @next/next/no-img-element -- imagen data URL generada en cliente por la librerÃ­a qrcode, incompatible con next/image
+                    <img src={qrDataUrl} alt="CÃ³digo QR de autorizaciÃ³n" className="w-44 h-44" />
                   ) : (
                     <Loader2 className="w-8 h-8 text-slate-300 animate-spin" />
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500 text-center leading-relaxed">
-                  Pide al supervisor que escanee este código con su teléfono para aprobar la venta.
+                  Pide al supervisor que escanee este cÃ³digo con su telÃ©fono para aprobar la venta.
                 </p>
                 <div className="flex items-center justify-center gap-1.5 text-slate-700">
                   <QrCode className="w-4 h-4" />
@@ -1772,7 +1772,7 @@ export default function POSPage() {
                 </div>
 
                 <button type="button" onClick={handlePausarPorAutorizacion} className="w-full px-3 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5">
-                  <PauseCircle className="w-3.5 h-3.5" /> Pausar y Mandar a Administración
+                  <PauseCircle className="w-3.5 h-3.5" /> Pausar y Mandar a AdministraciÃ³n
                 </button>
 
                 {pinEmergenciaAbierto ? (
@@ -1783,7 +1783,7 @@ export default function POSPage() {
                       maxLength={4}
                       value={pinEmergenciaInput}
                       onChange={(e) => setPinEmergenciaInput(e.target.value.replace(/\D/g, ""))}
-                      placeholder="••••"
+                      placeholder="â€¢â€¢â€¢â€¢"
                       autoFocus
                       className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-center tracking-[0.3em] text-slate-800 focus:outline-none focus:border-[#FE6712]"
                     />
@@ -1793,7 +1793,7 @@ export default function POSPage() {
                   </div>
                 ) : (
                   <button type="button" onClick={() => setPinEmergenciaAbierto(true)} className="w-full text-center text-[10px] text-slate-400 hover:text-slate-600 underline transition">
-                    ¿Supervisor sin teléfono? Ingresar PIN manual (4 dígitos)
+                    Â¿Supervisor sin telÃ©fono? Ingresar PIN manual (4 dÃ­gitos)
                   </button>
                 )}
               </div>
@@ -1802,14 +1802,14 @@ export default function POSPage() {
         </div>
       )}
 
-      {/* Modal Auditoría de Deuda */}
+      {/* Modal AuditorÃ­a de Deuda */}
       {modalAuditoriaAbierto && clienteCoincidenteActual && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-lg font-black text-slate-900">Auditoría de Deuda</h3>
-                <p className="text-xs text-slate-400">{clienteCoincidenteActual.nombre} • {clienteCoincidenteActual.documento}</p>
+                <h3 className="text-lg font-black text-slate-900">AuditorÃ­a de Deuda</h3>
+                <p className="text-xs text-slate-400">{clienteCoincidenteActual.nombre} â€¢ {clienteCoincidenteActual.documento}</p>
               </div>
               <button onClick={() => setModalAuditoriaAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
                 <X className="w-4 h-4" />
@@ -1855,7 +1855,7 @@ export default function POSPage() {
                           type="button"
                           onClick={() => handleEnviarWhatsapp(f)}
                           disabled={!f.telefono}
-                          title={f.telefono ? "Cobrar por WhatsApp" : "Sin teléfono registrado"}
+                          title={f.telefono ? "Cobrar por WhatsApp" : "Sin telÃ©fono registrado"}
                           className="p-1.5 text-emerald-600 hover:text-white hover:bg-emerald-600 rounded-lg border border-emerald-200 hover:border-emerald-600 transition disabled:opacity-30 disabled:pointer-events-none"
                         >
                           <MessageCircle className="w-3.5 h-3.5" />
@@ -1915,7 +1915,7 @@ export default function POSPage() {
         </div>
       )}
 
-      {/* Modal Configurar Datos de Cobro (Pago Móvil) */}
+      {/* Modal Configurar Datos de Cobro (Pago MÃ³vil) */}
       {modalConfigPagoMovilAbierto && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
@@ -1942,7 +1942,7 @@ export default function POSPage() {
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-600 block mb-1">Teléfono Receptor</label>
+              <label className="text-[11px] font-bold text-slate-600 block mb-1">TelÃ©fono Receptor</label>
               <input
                 type="tel"
                 value={formConfigPagoMovil.telefonoReceptor}
@@ -1953,7 +1953,7 @@ export default function POSPage() {
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-600 block mb-1">Cédula / RIF Receptor</label>
+              <label className="text-[11px] font-bold text-slate-600 block mb-1">CÃ©dula / RIF Receptor</label>
               <input
                 type="text"
                 value={formConfigPagoMovil.rifReceptor}
@@ -1964,7 +1964,7 @@ export default function POSPage() {
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-600 block mb-1">Nombre / Razón Social Titular</label>
+              <label className="text-[11px] font-bold text-slate-600 block mb-1">Nombre / RazÃ³n Social Titular</label>
               <input
                 type="text"
                 value={formConfigPagoMovil.nombreTitular}
@@ -2035,7 +2035,7 @@ export default function POSPage() {
                     <tr>
                       <th className="p-3">Cliente</th>
                       <th className="p-3">RIF</th>
-                      <th className="p-3">Ítems</th>
+                      <th className="p-3">Ãtems</th>
                       <th className="p-3">Total</th>
                       <th className="p-3">Pausada</th>
                       <th className="p-3 text-right">Acciones</th>
@@ -2046,7 +2046,7 @@ export default function POSPage() {
                       <tr key={v.id} className="hover:bg-slate-50/50 transition">
                         <td className="p-3 font-bold text-slate-800">{v.cliente?.nombre || "Consumidor Final"}</td>
                         <td className="p-3 text-slate-500">
-                          {v.cliente?.tipoDocumento || ""}{v.cliente?.numeroDocumento || "—"}
+                          {v.cliente?.tipoDocumento || ""}{v.cliente?.numeroDocumento || "â€”"}
                         </td>
                         <td className="p-3 text-slate-600">{(v.renglonesVenta || []).length}</td>
                         <td className="p-3 font-black text-slate-900">${v.total.toFixed(2)}</td>
