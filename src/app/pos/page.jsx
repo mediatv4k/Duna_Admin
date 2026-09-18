@@ -21,7 +21,7 @@ const METODOS_PAGO = [
   "Pago Móvil",
   "Transf. Mismo Banco",
   "Transf. Interbancaria",
-  "Tarjeta Débito/Crédito",
+  "Punto de Venta",
   "Zelle",
 ];
 
@@ -38,6 +38,7 @@ const FORM_VENTA_INICIAL = {
   monedaAbono: "usd",
   montoAbonadoInput: "",
   metodoPago: "Efectivo USD",
+  montoRecibido: "",
   bancoEmisor: "",
   bancoReceptor: "",
   referencia: "",
@@ -623,6 +624,16 @@ export default function POSPage() {
 
   const requiereDatosTransferenciaVenta = METODOS_CON_REFERENCIA.includes(formVenta.metodoPago);
 
+  // Efectivo: monto recibido y vuelto exacto en la moneda entregada por el cliente
+  const esEfectivoUsd = formVenta.metodoPago === "Efectivo USD";
+  const esEfectivoBs = formVenta.metodoPago === "Efectivo Bs";
+  const montoACobrarUsd = formVenta.condicionVenta === "CONTADO" ? totalFacturaUsd : montoAbonadoUsd;
+  const montoACobrarMoneda = esEfectivoBs ? montoACobrarUsd * (tasaBcv || 1) : montoACobrarUsd;
+  const montoRecibidoNum = Number(formVenta.montoRecibido) || 0;
+  const vueltoEfectivo = Math.max(0, montoRecibidoNum - montoACobrarMoneda);
+  const faltanteEfectivo = Math.max(0, montoACobrarMoneda - montoRecibidoNum);
+  const efectivoInsuficiente = (esEfectivoUsd || esEfectivoBs) && montoACobrarUsd > 0 && faltanteEfectivo > 0.005;
+
   // Candado de crédito: solo se exige autorización si la venta a crédito deja saldo pendiente real
   const saldoProyectadoCobro = Math.max(0, totalFacturaUsd - (formVenta.condicionVenta === "CONTADO" ? totalFacturaUsd : montoAbonadoUsd));
   const requiereAutorizacionSupervisor = formVenta.condicionVenta === "CREDITO" && saldoProyectadoCobro > 0;
@@ -799,6 +810,29 @@ export default function POSPage() {
       autorizadoPor: autorizadoPor || null,
     };
 
+    // Ticket térmico final: se arma con los datos de la venta antes de limpiar el formulario
+    const tasaTicket = tasaBcv || 45.50;
+    const ticketVenta = {
+      numeroTicket: idTicketGenerado,
+      fecha: new Date().toISOString(),
+      cliente: {
+        nombre: formVenta.cliente.trim() || "Consumidor Final",
+        cedula: documentoFinal || "S/D",
+        telefono: formVenta.telefono || "",
+        direccion: formVenta.direccion || "",
+      },
+      items: renglonesVenta.map(r => ({
+        nombre: `${r.nombre}${r.variante ? ` (${r.variante})` : ""}`,
+        cantidad: r.cantidad,
+        precio: r.precioUnitario,
+      })),
+      totalUSD: totalFacturaUsd,
+      tasa: tasaTicket,
+      totalBs: totalFacturaUsd * tasaTicket,
+      metodoPago: (formVenta.metodoPago || "Efectivo USD").toUpperCase(),
+      cajero: usuario?.nombre || "Cajero Principal",
+    };
+
     // Descontar inventario de CADA renglón del ticket (con soporte de variantes/sabores)
     let productosActualizados = [...productosInventario];
     renglonesVenta.forEach(r => {
@@ -866,6 +900,13 @@ export default function POSPage() {
     setDraftDetectado(null);
     setNumeroTicketActual(`FAC-${Date.now().toString().slice(-6)}`);
     inputDocumentoRef.current?.focus();
+
+    // Pago confirmado y venta registrada: recién ahora se muestra el ticket térmico
+    setDatosUltimoTicket(ticketVenta);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("duna_ultimo_ticket", JSON.stringify(ticketVenta));
+    }
+    setModalTicketAbierto(true);
   };
 
   // Tras el check verde de aprobación: continúa la facturación automáticamente
@@ -939,8 +980,8 @@ export default function POSPage() {
     registrarVenta(autorizacionCredito);
   };
 
-  // Confirmación de venta directa de alta velocidad con apertura de ticket térmico
-  const handleConfirmarVentaDirecta = () => {
+  // Valida cliente y productos y abre la pasarela de métodos de pago
+  const handleAbrirCobro = () => {
     if (!formVenta.numeroDocumento.trim() || !formVenta.cliente.trim()) {
       setErrorDocumento(true);
       alert("Debe ingresar la Cédula/RIF del cliente para facturar");
@@ -951,46 +992,8 @@ export default function POSPage() {
       return;
     }
 
-    const clienteNombre = formVenta.cliente.trim() || "Consumidor Final";
-    const docNumero = formVenta.numeroDocumento.trim() || "00000000";
-    const docTipo = formVenta.tipoDocumento || "V-";
-
-    // Preparar datos del ticket térmico
-    const ticketVenta = {
-      numeroTicket: numeroTicketActual || `FAC-${Date.now().toString().slice(-6)}`,
-      fecha: new Date().toISOString(),
-      cliente: {
-        nombre: clienteNombre,
-        cedula: `${docTipo}${docNumero}`,
-        telefono: formVenta.telefono || "",
-      },
-      items: renglonesVenta.map(r => ({
-        nombre: `${r.nombre}${r.variante ? ` (${r.variante})` : ""}`,
-        cantidad: r.cantidad,
-        precio: r.precioUnitario,
-      })),
-      totalUSD: totalFacturaUsd,
-      tasa: tasaBcv || 45.50,
-      totalBs: totalFacturaUsd * (tasaBcv || 45.50),
-      metodoPago: (formVenta.metodoPago || "Efectivo USD").toUpperCase(),
-      cajero: usuario?.nombre || "Cajero Principal",
-    };
-
-    // Si la venta está marcada como crédito y deja saldo, abrir modal de autorización/cobro detallado
-    if (formVenta.condicionVenta === "CREDITO" && saldoProyectadoCobro > 0 && !autorizacionCredito) {
-      setModalCobroAbierto(true);
-      return;
-    }
-
-    // Registrar la venta en cuentas y descontar inventario
-    registrarVenta(autorizacionCredito);
-
-    // Abrir ticket térmico para imprimir
-    setDatosUltimoTicket(ticketVenta);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("duna_ultimo_ticket", JSON.stringify(ticketVenta));
-    }
-    setModalTicketAbierto(true);
+    // Solo abre la pasarela de cobro; la venta y el ticket ocurren al confirmar el pago
+    setModalCobroAbierto(true);
   };
 
   const handleLimpiarTicket = () => {
@@ -1637,7 +1640,7 @@ export default function POSPage() {
               </button>
               <button
                 type="button"
-                onClick={handleConfirmarVentaDirecta}
+                onClick={handleAbrirCobro}
                 disabled={renglonesVenta.length === 0 || !formVenta.numeroDocumento.trim() || !formVenta.cliente.trim()}
                 className="px-6 py-3 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-sm font-black transition flex items-center justify-center gap-2 shadow-sm shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
               >
@@ -1727,12 +1730,54 @@ export default function POSPage() {
                     </label>
                     <select
                       value={formVenta.metodoPago}
-                      onChange={(e) => setFormVenta({ ...formVenta, metodoPago: e.target.value })}
+                      onChange={(e) => setFormVenta({ ...formVenta, metodoPago: e.target.value, montoRecibido: "" })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
                     >
                       {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                   </div>
+                  {(esEfectivoUsd || esEfectivoBs) && montoACobrarUsd > 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
+                        <span>Monto a cobrar</span>
+                        <span className="text-slate-900">
+                          {esEfectivoBs ? `Bs. ${montoACobrarMoneda.toFixed(2)}` : `$${montoACobrarMoneda.toFixed(2)}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={formVenta.montoRecibido}
+                          onChange={(e) => setFormVenta({ ...formVenta, montoRecibido: e.target.value })}
+                          placeholder={esEfectivoBs ? "Monto recibido (Bs.)" : "Monto recibido ($)"}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setFormVenta({ ...formVenta, montoRecibido: montoACobrarMoneda.toFixed(2) })}
+                          className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-[11px] font-bold transition shrink-0"
+                        >
+                          Monto exacto
+                        </button>
+                      </div>
+                      {montoRecibidoNum > 0 && (
+                        efectivoInsuficiente ? (
+                          <p className="text-[11px] font-bold text-rose-600">
+                            Faltan {esEfectivoBs ? `Bs. ${faltanteEfectivo.toFixed(2)}` : `$${faltanteEfectivo.toFixed(2)}`}
+                          </p>
+                        ) : (
+                          <p className="text-[11px] font-black text-emerald-700">
+                            Vuelto: {esEfectivoBs ? `Bs. ${vueltoEfectivo.toFixed(2)}` : `$${vueltoEfectivo.toFixed(2)}`}
+                            <span className="font-bold text-emerald-600 ml-1.5">
+                              (≈ {esEfectivoBs ? `$${(vueltoEfectivo / (tasaBcv || 1)).toFixed(2)}` : `Bs. ${formatearBs(vueltoEfectivo, tasaBcv)}`})
+                            </span>
+                          </p>
+                        )
+                      )}
+                    </div>
+                  )}
                   {requiereDatosTransferenciaVenta && (
                     <div className="grid grid-cols-2 gap-3">
                       <select value={formVenta.bancoEmisor} onChange={(e) => setFormVenta({ ...formVenta, bancoEmisor: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
@@ -1829,7 +1874,7 @@ export default function POSPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={formVenta.numeroDocumento.trim().length < 5 || renglonesVenta.length === 0 || referenciaVentaDuplicada}
+                  disabled={formVenta.numeroDocumento.trim().length < 5 || renglonesVenta.length === 0 || referenciaVentaDuplicada || efectivoInsuficiente}
                   title={
                     formVenta.numeroDocumento.trim().length < 5
                       ? "La Cédula o RIF es obligatoria para emitir la factura"
@@ -1837,6 +1882,8 @@ export default function POSPage() {
                       ? "Agrega al menos un producto al ticket"
                       : referenciaVentaDuplicada
                       ? "Esta referencia ya fue registrada anteriormente"
+                      : efectivoInsuficiente
+                      ? "El monto recibido no cubre el total a cobrar"
                       : undefined
                   }
                   className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed ${
@@ -1848,7 +1895,7 @@ export default function POSPage() {
                   {requiereAutorizacionSupervisor && !autorizacionCredito ? (
                     <><Lock className="w-4 h-4" /> Solicitar Autorización</>
                   ) : (
-                    <><Check className="w-4 h-4" /> Registrar Factura</>
+                    <><Check className="w-4 h-4" /> Confirmar Pago</>
                   )}
                 </button>
               </div>
