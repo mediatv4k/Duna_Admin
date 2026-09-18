@@ -23,7 +23,7 @@ export default function Home() {
   useEffect(() => {
     try {
       const cuentas = JSON.parse(localStorage.getItem("duna_cxc_records") || "[]");
-      const productos = JSON.parse(localStorage.getItem("duna_inventario_prods") || "[]");
+      const productos = JSON.parse(localStorage.getItem("duna_productos") || "[]");
       const cxp = JSON.parse(localStorage.getItem("duna_cxp") || "[]");
       const cxpPendientes = cxp.filter(c => (c.saldoPendienteUsd || 0) > 0);
 

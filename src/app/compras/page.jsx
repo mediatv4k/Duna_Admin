@@ -85,7 +85,7 @@ export default function ComprasPage() {
   const [compraDetalleActual, setCompraDetalleActual] = useState(null);
 
   useEffect(() => {
-    const prods = localStorage.getItem("duna_inventario_prods");
+    const prods = localStorage.getItem("duna_productos");
     if (prods) {
       try {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente
@@ -300,7 +300,7 @@ export default function ComprasPage() {
       });
     });
     setProductos(productosActualizados);
-    localStorage.setItem("duna_inventario_prods", JSON.stringify(productosActualizados));
+    localStorage.setItem("duna_productos", JSON.stringify(productosActualizados));
 
     const esContado = formCompra.condicion === "CONTADO";
     const totalUsd = totalCompraUsd;

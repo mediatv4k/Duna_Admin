@@ -10,7 +10,8 @@ import QRCode from "qrcode";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useUser } from "@/context/UserContext";
 import bancosVenezuela from "@/data/bancosVenezuela";
-import { escucharDocumento, guardarDocumento, actualizarDocumento } from "@/lib/firebase";
+import { escucharColeccion, escucharDocumento, guardarDocumento, actualizarDocumento } from "@/lib/firebase";
+import CATALOGO_SEMILLA from "@/data/catalogoSemilla";
 
 const PAISES = [
   { code: "+58", name: "Venezuela" },
@@ -187,15 +188,6 @@ export default function POSPage() {
       }
     }
 
-    const prods = localStorage.getItem("duna_inventario_prods");
-    if (prods) {
-      try {
-        setProductosInventario(JSON.parse(prods));
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
     const dirClientes = localStorage.getItem("duna_clientes");
     if (dirClientes) {
       try {
@@ -250,6 +242,21 @@ export default function POSPage() {
     inputProductoRef.current?.focus();
   }, []);
 
+  // Sincronización en tiempo real con Firestore (colección "duna_productos"); sin variables de entorno,
+  // degrada suavemente a localStorage. Si la colección está vacía, siembra el catálogo de demostración.
+  useEffect(() => {
+    return escucharColeccion("duna_productos", (items) => {
+      if (items.length === 0) {
+        CATALOGO_SEMILLA.forEach((p) => {
+          guardarDocumento("duna_productos", p.id, p).catch((e) => console.error(e));
+        });
+        setProductosInventario(CATALOGO_SEMILLA);
+        return;
+      }
+      setProductosInventario(items);
+    });
+  }, []);
+
   // Auto-guardado continuo del ticket en curso (crash recovery): solo escribe en localStorage, sin setState
   useEffect(() => {
     if (!formVenta.cliente && renglonesVenta.length === 0) return;
@@ -294,7 +301,9 @@ export default function POSPage() {
 
   const actualizarProductosInventario = (nuevos) => {
     setProductosInventario(nuevos);
-    localStorage.setItem("duna_inventario_prods", JSON.stringify(nuevos));
+    nuevos.forEach((p) => {
+      guardarDocumento("duna_productos", p.id, p).catch((e) => console.error(e));
+    });
   };
 
   const actualizarClientes = (nuevos) => {

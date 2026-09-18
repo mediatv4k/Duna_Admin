@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useBusinessProfile } from "@/context/BusinessProfileContext";
+import { escucharColeccion, guardarDocumento, eliminarDocumento } from "@/lib/firebase";
+import CATALOGO_SEMILLA from "@/data/catalogoSemilla";
 
 const NICHOS = [
   "General",
@@ -189,21 +191,29 @@ export default function InventarioPage() {
   const [modalJsonAbierto, setModalJsonAbierto] = useState(false);
   const [productoJsonActual, setProductoJsonActual] = useState(null);
 
+  // Sincronización en tiempo real con Firestore (colección "duna_productos"); sin variables de entorno,
+  // degrada suavemente a localStorage. Si la colección está vacía, siembra el catálogo de demostración.
   useEffect(() => {
-    const guardados = localStorage.getItem("duna_inventario_prods");
-    if (guardados) {
-      try {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente
-        setProductos(JSON.parse(guardados));
-      } catch (e) {
-        console.error(e);
+    return escucharColeccion("duna_productos", (items) => {
+      if (items.length === 0) {
+        CATALOGO_SEMILLA.forEach((p) => {
+          guardarDocumento("duna_productos", p.id, p).catch((e) => console.error(e));
+        });
+        setProductos(CATALOGO_SEMILLA);
+        return;
       }
-    }
+      setProductos(items);
+    });
   }, []);
 
-  const actualizarProductos = (nuevos) => {
+  const actualizarProductos = (nuevos, idsEliminados = []) => {
     setProductos(nuevos);
-    localStorage.setItem("duna_inventario_prods", JSON.stringify(nuevos));
+    nuevos.forEach((p) => {
+      guardarDocumento("duna_productos", p.id, p).catch((e) => console.error(e));
+    });
+    idsEliminados.forEach((id) => {
+      eliminarDocumento("duna_productos", id).catch((e) => console.error(e));
+    });
   };
 
   const handleFileUpload = (e) => {
@@ -274,7 +284,9 @@ export default function InventarioPage() {
             };
           });
 
-        actualizarProductos(mapeados);
+        // El Excel reemplaza el catálogo completo: los productos anteriores que no vienen en el archivo se eliminan también en Firestore
+        const idsReemplazados = productos.filter(p => !mapeados.some(m => m.id === p.id)).map(p => p.id);
+        actualizarProductos(mapeados, idsReemplazados);
         alert(`¡Catálogo importado! Se cargaron ${mapeados.length} productos.`);
       } catch (err) {
         alert("Error al leer el archivo Excel.");
@@ -546,7 +558,7 @@ export default function InventarioPage() {
 
   const handleEliminarProducto = (id) => {
     if (confirm("¿Seguro que deseas eliminar este producto?")) {
-      actualizarProductos(productos.filter(p => p.id !== id));
+      actualizarProductos(productos.filter(p => p.id !== id), [id]);
     }
   };
 
