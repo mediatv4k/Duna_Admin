@@ -1,9 +1,10 @@
 // Inicializador de Firebase + helpers universales de sincronización.
 //
-// Si las variables NEXT_PUBLIC_FIREBASE_* no están configuradas, todos los
-// helpers degradan suavemente hacia localStorage (con polling + evento
-// "storage" para simular tiempo real entre pestañas), de modo que el
-// sistema sigue funcionando 100% offline/local sin romper nada.
+// La configuración se toma de las variables NEXT_PUBLIC_FIREBASE_* cuando están
+// presentes, y si no (por ejemplo, un despliegue en Vercel sin esas variables
+// configuradas) cae en los valores por defecto del proyecto duna-admin, para que
+// la app quede conectada a Firebase igual. Solo si ninguna de las dos fuentes
+// resuelve (caso extremo) los helpers degradan hacia localStorage.
 
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
@@ -21,12 +22,12 @@ import {
 } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyC8TmDTcb43a2jkUJBOquibEUzgmPh8fiQ",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "duna-admin.firebaseapp.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "duna-admin",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "duna-admin.firebasestorage.app",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "18381986205",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:18381986205:web:02e6e7b3ed0395191db774",
 };
 
 // Solo se activa Firebase si las variables mínimas están presentes; si no, todo opera en modo local.
