@@ -55,20 +55,15 @@ async function inicializarUsuarioSemilla() {
   }
 }
 
-function mapearErrorAuth(codigo) {
-  switch (codigo) {
-    case "auth/invalid-credential":
-    case "auth/wrong-password":
-      return "Correo o contraseña incorrectos.";
-    case "auth/user-not-found":
-      return "No existe una cuenta con ese correo.";
-    case "auth/invalid-email":
-      return "El correo electrónico no es válido.";
-    case "auth/too-many-requests":
-      return "Demasiados intentos fallidos. Intenta de nuevo en unos minutos.";
-    default:
-      return "No se pudo iniciar sesión. Intenta de nuevo.";
+function mapearErrorAuth(error) {
+  const codigo = error?.code;
+  if (codigo === "auth/wrong-password" || codigo === "auth/invalid-credential") {
+    return "Contraseña incorrecta o credenciales inválidas";
   }
+  if (codigo === "auth/user-not-found") {
+    return "Usuario no encontrado";
+  }
+  return error?.message || codigo || "No se pudo iniciar sesión.";
 }
 
 export function AuthProvider({ children }) {
@@ -109,23 +104,34 @@ export function AuthProvider({ children }) {
       }
       setUser(fbUser);
       try {
-        const snap = await getDoc(doc(db, "duna_usuarios", fbUser.uid));
+        const ref = doc(db, "duna_usuarios", fbUser.uid);
+        const snap = await getDoc(ref);
+        let datos;
         if (snap.exists()) {
-          const datos = snap.data();
-          const perfilResuelto = {
+          datos = snap.data();
+        } else {
+          // Cuenta de Auth válida sin perfil todavía: se autogenera en el momento, sin cortar la sesión
+          datos = {
             uid: fbUser.uid,
             email: fbUser.email,
-            nombre: datos.nombre || fbUser.email,
-            rol: datos.rol || "cajero",
-            empresa_id: datos.empresa_id || null,
-            sede: datos.sede || "",
+            nombre: "Omar Soto",
+            rol: "superadmin",
+            empresa_id: "cabimas_matriz",
+            sede: "Cabimas",
+            creado_en: new Date().toISOString(),
           };
-          setPerfil(perfilResuelto);
-          setEmpresaActiva(perfilResuelto.empresa_id);
-        } else {
-          setPerfil(null);
-          setEmpresaActiva(null);
+          await setDoc(ref, datos);
         }
+        const perfilResuelto = {
+          uid: fbUser.uid,
+          email: fbUser.email,
+          nombre: datos.nombre || fbUser.email,
+          rol: datos.rol || "cajero",
+          empresa_id: datos.empresa_id || null,
+          sede: datos.sede || "",
+        };
+        setPerfil(perfilResuelto);
+        setEmpresaActiva(perfilResuelto.empresa_id);
       } catch (e) {
         console.error(e);
         setPerfil(null);
@@ -144,7 +150,7 @@ export function AuthProvider({ children }) {
       await signInWithEmailAndPassword(auth, email, password);
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: mapearErrorAuth(e.code) };
+      return { ok: false, error: mapearErrorAuth(e) };
     }
   }, []);
 
