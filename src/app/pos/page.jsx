@@ -3,6 +3,7 @@ import TicketTermicoModal from '@/components/TicketTermicoModal';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Search, Plus, Check, X,
   Trash2, MessageCircle, ShieldCheck, Wallet, Copy, Settings, Smartphone,
@@ -295,6 +296,7 @@ export default function POSPage() {
 
   const { tasaBcv } = useCurrency();
   const { usuario } = useUser();
+  const router = useRouter();
 
   const [cuentas, setCuentas] = useState([]);
   const [productosInventario, setProductosInventario] = useState([]);
@@ -1340,7 +1342,13 @@ export default function POSPage() {
     setErrorDocumento(false);
   };
 
-  // Atajos de teclado globales: F2 buscador, F8 retener, F12 cobrar, Esc limpiar/cerrar
+  // Cierra la terminal flotante y regresa al módulo anterior (o a Inventario si no hay historial)
+  const handleSalirTerminal = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) router.back();
+    else router.push("/inventario");
+  };
+
+  // Atajos de teclado globales: F2 buscador, F8 retener, F12 cobrar, Esc cierra el modal abierto, limpia la búsqueda o sale
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.key === "F2") {
@@ -1354,12 +1362,17 @@ export default function POSPage() {
         e.preventDefault();
         if (renglonesVenta.length > 0 && !modalCobroAbierto) handleAbrirCobro();
       } else if (e.key === "Escape") {
-        if (modalTicketAbierto) setModalTicketAbierto(false);
+        if (pinEmergenciaAbierto) setPinEmergenciaAbierto(false);
+        else if (modalAutorizacionAbierto) setModalAutorizacionAbierto(false);
+        else if (modalComprobanteAbierto) setModalComprobanteAbierto(false);
+        else if (modalConfigPagoMovilAbierto) setModalConfigPagoMovilAbierto(false);
+        else if (modalTicketAbierto) setModalTicketAbierto(false);
         else if (modalCobroAbierto) setModalCobroAbierto(false);
         else if (modalEsperaAbierto) setModalEsperaAbierto(false);
         else if (modalAuditoriaAbierto) setModalAuditoriaAbierto(false);
         else if (modalTurnoAbierto) setModalTurnoAbierto(false);
-        else setBusquedaProducto("");
+        else if (busquedaProducto) setBusquedaProducto("");
+        else handleSalirTerminal();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1372,7 +1385,10 @@ export default function POSPage() {
     }`;
 
   return (
-    <div className="min-h-[calc(100vh-37px)] lg:h-[calc(100vh-37px)] bg-white text-slate-800 flex flex-col font-sans lg:overflow-hidden">
+    <>
+    {/* Overlay flotante centrado de la Terminal POS */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+    <div className="w-full max-w-[98vw] xl:max-w-[1600px] h-[94vh] bg-white text-slate-800 font-sans rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
 
       {/* ===== 1. BARRA SUPERIOR DE ESTADO ===== */}
       <header className="border-b border-slate-200 bg-white shrink-0">
@@ -1411,6 +1427,14 @@ export default function POSPage() {
               <span className={`w-2 h-2 rounded-full ${adonisConectado ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
               {adonisConectado ? "Adonis Core Conectado" : "Adonis Core Sin Conexión"}
             </span>
+            <button
+              type="button"
+              onClick={handleSalirTerminal}
+              title="Salir de la terminal [Esc]"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 rounded-lg text-[11px] font-black transition whitespace-nowrap"
+            >
+              <X className="w-3.5 h-3.5" /> Salir de Terminal
+            </button>
           </div>
         </div>
 
@@ -1455,7 +1479,7 @@ export default function POSPage() {
       </header>
 
       {/* ===== LAYOUT DUAL 65% / 35% ===== */}
-      <main className="flex-1 min-h-0 flex flex-col lg:flex-row">
+      <main className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
 
         {/* ---------- PANEL IZQUIERDO (65%) ---------- */}
         <section className="lg:w-[65%] lg:overflow-y-auto p-4 lg:p-5 space-y-4">
@@ -1879,6 +1903,8 @@ export default function POSPage() {
           </div>
         </aside>
       </main>
+    </div>
+    </div>
 
       {/* Modal de Cobro / Medios de Pago */}
       {modalCobroAbierto && (
@@ -2535,6 +2561,6 @@ export default function POSPage() {
         venta={datosUltimoTicket}
         empresa={{ nombre: "D'UNA MARKET", sede: "Sede Cabimas, Zulia", rif: "J-50123456-7", telefono: "0412-1234567" }}
       />
-  </div>
+    </>
   );
 }
