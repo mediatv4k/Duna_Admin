@@ -14,7 +14,6 @@ import { useCurrency } from "@/context/CurrencyContext";
 import { useUser } from "@/context/UserContext";
 import bancosVenezuela from "@/data/bancosVenezuela";
 import { escucharColeccion, escucharDocumento, guardarDocumento, actualizarDocumento, eliminarDocumento } from "@/lib/firebase";
-import { enviarVentaAdonisPickup } from "@/services/adonisPosSync";
 
 const METODOS_PAGO = [
   "Efectivo USD",
@@ -27,6 +26,68 @@ const METODOS_PAGO = [
 ];
 
 const METODOS_CON_REFERENCIA = ["Pago Móvil", "Transf. Mismo Banco", "Transf. Interbancaria"];
+
+const ADONIS_PURCHASE_URL = "https://dev.carjos-marketplace.cloud/delivery/request/purchase/web";
+const ADONIS_API_KEY = "bf8f1b64-6342-48c5-af05-501e4c15a6cb";
+
+// Envía la venta a AdonisJS como PICKUP (multipart/form-data, campo orderData). Solo viajan los productos de su catálogo.
+async function enviarPedidoAdonisPickup({ formVenta, documento, items, totalUsd, tasaReferencia, storeIdDefecto }) {
+  const itemsAdonis = items.filter(
+    (it) => String(it.codigo || "").toUpperCase().startsWith("FD") || String(it.productoId || "").includes("ADONIS")
+  );
+  if (itemsAdonis.length === 0) return { omitido: true };
+
+  const storeId = Number(formVenta.storeId || storeIdDefecto || 47) || 47;
+  const telefono = formVenta.telefono
+    ? `${String(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`
+    : "";
+
+  const orderData = {
+    id: "",
+    data: itemsAdonis.map((it) => {
+      const unitario = Number(it.precioUnitario) || 0;
+      return {
+        id: Number(it.adonisId) || Number(String(it.productoId || "").replace("ADONIS-", "")) || 3534,
+        code: it.codigo,
+        name: it.nombre,
+        image: it.imagen || "",
+        cant: Number(it.cantidad) || 1,
+        pricing: { unitBasePrice: unitario, addonsTotal: 0, unitFinalPrice: unitario },
+        totalPrice: unitario * (Number(it.cantidad) || 1),
+        variants: [],
+      };
+    }),
+    service: "PICKUP",
+    location: { lat: 0, lng: 0 },
+    distance: "0",
+    duration: "0",
+    distanceText: "0 km",
+    durationText: "0 min",
+    serviceAmount: "0",
+    tip: "",
+    store: { id: storeId, phone: "584124708015" },
+    foodStoreId: storeId,
+    customerName: formVenta.cliente?.trim() || "Cliente Mostrador",
+    customerDocument: documento || "V00000000",
+    phone: telefono || "584120000000",
+    address: formVenta.direccion?.trim() || "Retiro en tienda física",
+    paymentRef: "PAGO-POS-MOSTRADOR",
+    paymentMethod: { code: "EFECTIVO", value: "Efectivo Mostrador", field4: "USD", field5: "DEFAULT" },
+    totalPaidDefaultAmount: totalUsd,
+    totalPaidReferenceAmount: totalUsd * (Number(tasaReferencia) || 0),
+    totalWithoutDiscount: totalUsd,
+  };
+
+  const formData = new FormData();
+  formData.append("orderData", JSON.stringify(orderData));
+
+  const res = await fetch(ADONIS_PURCHASE_URL, {
+    method: "POST",
+    headers: { apiKey: ADONIS_API_KEY, timeZone: "America/Caracas" },
+    body: formData,
+  });
+  return res.json();
+}
 
 const FORM_VENTA_INICIAL = {
   cliente: "",
@@ -887,24 +948,27 @@ export default function POSPage() {
 
     actualizarCuentas([nuevaCuenta, ...cuentas]);
 
-    // Sincronización en segundo plano con Adonis (solo productos de su catálogo); nunca bloquea la caja
-    enviarVentaAdonisPickup(
-      {
-        clienteNombre: formVenta.cliente.trim(),
-        clienteTelefono: formVenta.telefono ? `${formVenta.paisCodigo.replace("+", "")}${limpiarTelefono(formVenta.telefono)}` : "",
-        clienteCedula: documentoFinal,
-        totalUsd: totalFacturaUsd,
-        totalBs: totalFacturaUsd * tasaTicket,
-      },
-      renglonesVenta.map(r => ({
-        id: r.productoId,
-        codigo: r.codigo,
-        nombre: r.nombre,
-        cantidad: r.cantidad,
-        precio_usd: r.precioUnitario,
-      }))
-    )
-      .then((resultado) => console.log("Adonis PICKUP:", resultado))
+    // Envío a Adonis (PICKUP) en segundo plano: la caja nunca espera la respuesta
+    enviarPedidoAdonisPickup({
+      formVenta,
+      documento: documentoFinal,
+      items: renglonesVenta.map(r => {
+        const inv = productosInventario.find(p => p.id === r.productoId);
+        return { ...r, adonisId: inv?.adonisId, imagen: inv?.image };
+      }),
+      totalUsd: totalFacturaUsd,
+      tasaReferencia: tasaBcv,
+      storeIdDefecto: usuario?.storeId,
+    })
+      .then((resp) => {
+        console.log("Adonis PICKUP:", resp);
+        // code === 1: el pedido quedó registrado; se guarda el recibo devuelto junto al último ticket
+        if (resp?.code === 1 && resp?.data?.url) {
+          const conRecibo = { ...ticketVenta, urlRecibo: resp.data.url };
+          setDatosUltimoTicket(conRecibo);
+          localStorage.setItem("duna_ultimo_ticket", JSON.stringify(conRecibo));
+        }
+      })
       .catch((err) => console.warn("Adonis PICKUP no disponible:", err));
 
     setModalCobroAbierto(false);
