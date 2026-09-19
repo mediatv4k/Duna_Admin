@@ -51,8 +51,20 @@ async function cargarCatalogoAdonisPos(signal) {
   for (let p = 2; p <= ultimaPagina; p++) {
     items = items.concat(aplanar(await pedirPaginaCatalogoAdonis(p, signal)));
   }
-  return items.map((item) => ({
+  // Stock real: detalle de cada producto en paralelo (data.stock, o 0 si no existe)
+  const detalles = await Promise.allSettled(
+    items.map(async (item) => {
+      const res = await fetch(`https://dev.carjos-marketplace.cloud/product/${item.id}/web`, {
+        headers: ADONIS_CATALOGO_HEADERS,
+        signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+  );
+  return items.map((item, i) => ({
     ...item,
+    stock: detalles[i].status === "fulfilled" ? Number(detalles[i].value?.data?.stock ?? 0) : 0,
     id: item.id,
     adonisId: item.id,
     code: String(item.code || item.id),
@@ -444,10 +456,6 @@ export default function POSPage() {
     setModalConfigPagoMovilAbierto(false);
   };
 
-  const actualizarProductosInventario = (nuevos) => {
-    setProductosInventario(nuevos);
-  };
-
   const actualizarClientes = (nuevos, clienteModificado) => {
     setClientes(nuevos);
     const porGuardar = clienteModificado ? [clienteModificado] : nuevos;
@@ -577,7 +585,7 @@ export default function POSPage() {
       )
     : [];
   // Solo se ofrecen productos con existencias: evita ventas en negativo en el mostrador
-  const tieneExistencias = (p) => !p.outOfStock;
+  const tieneExistencias = (p) => Number(p.stock) > 0 && !p.outOfStock;
   const productosFiltradosCombo = coincidenciasBusqueda.filter(tieneExistencias).slice(0, 8);
   const soloAgotadosEnBusqueda = coincidenciasBusqueda.length > 0 && productosFiltradosCombo.length === 0;
 
@@ -588,7 +596,20 @@ export default function POSPage() {
   };
 
   // Añade (o fusiona con un renglón existente idéntico) un producto al ticket de venta
-  const agregarProductoAlTicket = (producto, varianteNombre, toppingsSeleccionados, cantidad) => {
+  const agregarProductoAlTicket = (producto, varianteNombre, toppingsSeleccionados, cantidadSolicitada) => {
+    let cantidad = cantidadSolicitada;
+    if (producto.stock !== undefined && producto.stock !== null && Number.isFinite(Number(producto.stock))) {
+      const yaEnTicket = renglonesVenta.filter(r => r.productoId === producto.id).reduce((acc, r) => acc + r.cantidad, 0);
+      const disponible = Number(producto.stock) - yaEnTicket;
+      if (disponible <= 0) {
+        alert(`No hay más existencias de "${producto.name}" (stock: ${producto.stock}).`);
+        return;
+      }
+      if (cantidad > disponible) {
+        cantidad = disponible;
+        alert(`Solo hay ${producto.stock} unidades de "${producto.name}" en anaquel; se ajustó la cantidad a ${disponible}.`);
+      }
+    }
     const toppingsKey = toppingsSeleccionados.map(t => t.id).sort().join(",");
     const precioUnitario = producto.price + toppingsSeleccionados.reduce((acc, t) => acc + (Number(t.precioExtra) || 0), 0);
 
@@ -691,13 +712,31 @@ export default function POSPage() {
     });
   };
 
+  // Tope de unidades por producto según el stock real de anaquel (descontando lo ya cargado en otros renglones)
+  const limitarAlStock = (renglones, renglon, deseada) => {
+    const prod = productosInventario.find(p => p.id === renglon.productoId);
+    if (!prod || prod.stock === undefined || prod.stock === null || !Number.isFinite(Number(prod.stock))) return deseada;
+    const enOtros = renglones
+      .filter(r => r.productoId === renglon.productoId && r.tempId !== renglon.tempId)
+      .reduce((acc, r) => acc + r.cantidad, 0);
+    return Math.max(1, Math.min(deseada, Number(prod.stock) - enOtros));
+  };
+
   const handleActualizarCantidadRenglon = (tempId, nuevaCantidad) => {
-    const cant = Math.max(1, Number(nuevaCantidad) || 1);
-    setRenglonesVenta(prev => prev.map(r => r.tempId === tempId ? { ...r, cantidad: cant, subtotal: r.precioUnitario * cant } : r));
+    const deseada = Math.max(1, Number(nuevaCantidad) || 1);
+    setRenglonesVenta(prev => prev.map(r => {
+      if (r.tempId !== tempId) return r;
+      const cant = limitarAlStock(prev, r, deseada);
+      return { ...r, cantidad: cant, subtotal: r.precioUnitario * cant };
+    }));
   };
 
   const handleIncrementarRenglon = (tempId) => {
-    setRenglonesVenta(prev => prev.map(r => r.tempId === tempId ? { ...r, cantidad: r.cantidad + 1, subtotal: r.precioUnitario * (r.cantidad + 1) } : r));
+    setRenglonesVenta(prev => prev.map(r => {
+      if (r.tempId !== tempId) return r;
+      const cant = limitarAlStock(prev, r, r.cantidad + 1);
+      return { ...r, cantidad: cant, subtotal: r.precioUnitario * cant };
+    }));
   };
 
   const handleDecrementarRenglon = (tempId) => {
@@ -929,26 +968,6 @@ export default function POSPage() {
       cajero: usuario?.nombre || "Cajero Principal",
     };
 
-    // Descontar inventario de CADA renglón del ticket (con soporte de variantes/sabores)
-    let productosActualizados = [...productosInventario];
-    renglonesVenta.forEach(r => {
-      productosActualizados = productosActualizados.map(p => {
-        if (p.id !== r.productoId) return p;
-        if (r.variante && (p.variantes || []).length > 0) {
-          const nuevasVariantes = (p.variantes || []).map(v =>
-            v.nombre === r.variante
-              ? { ...v, stock: Math.max(0, (Number(v.stock) || 0) - r.cantidad) }
-              : v
-          );
-          const nuevoStock = nuevasVariantes.reduce((acc, v) => acc + (Number(v.stock) || 0), 0);
-          return { ...p, variantes: nuevasVariantes, stock: nuevoStock };
-        }
-        if (p.stock === undefined || p.stock === null) return p;
-        return { ...p, stock: Math.max(0, p.stock - r.cantidad) };
-      });
-    });
-    actualizarProductosInventario(productosActualizados);
-
     // Escudo anti-duplicados: upsert por cédula/RIF normalizada (clave única)
     const clienteExistente = documentoFinal
       ? clientes.find(c => normalizarDocumento(c.documento) === documentoFinal)
@@ -993,6 +1012,14 @@ export default function POSPage() {
     })
       .then((resp) => {
         console.log("Adonis PICKUP:", resp);
+        // code === 1: descuento visual inmediato del stock vendido, para la siguiente búsqueda
+        if (resp?.code === 1) {
+          setProductosInventario(prev => prev.map(p => {
+            const vendido = renglonesVenta.filter(r => r.productoId === p.id).reduce((acc, r) => acc + r.cantidad, 0);
+            if (vendido === 0 || p.stock === undefined || p.stock === null) return p;
+            return { ...p, stock: Math.max(0, Number(p.stock) - vendido) };
+          }));
+        }
         // code === 1: el pedido quedó registrado; se guarda el recibo devuelto junto al último ticket
         if (resp?.code === 1 && resp?.data?.url) {
           const conRecibo = { ...ticketVenta, urlRecibo: resp.data.url };
@@ -1572,7 +1599,7 @@ export default function POSPage() {
                     <img src={p.image} alt="" className="w-8 h-8 rounded-lg object-cover bg-slate-100 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <span className="font-bold text-slate-800 text-xs block truncate">{p.name}</span>
-                      <span className="text-[10px] text-slate-400">{p.code} • Stock: {p.stock ?? "—"}</span>
+                      <span className="text-[10px] text-slate-400">{p.code} • Stock: {p.stock}</span>
                     </div>
                     <span className="text-xs font-black text-slate-900 shrink-0">${p.price.toFixed(2)}</span>
                   </button>

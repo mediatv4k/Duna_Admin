@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import {
@@ -11,7 +11,6 @@ import {
 import { useCurrency } from "@/context/CurrencyContext";
 import { useBusinessProfile } from "@/context/BusinessProfileContext";
 import { useUser } from "@/context/UserContext";
-import { escucharColeccion, obtenerColeccion, guardarDocumento, eliminarDocumento } from "@/lib/firebase";
 
 const NICHOS = [
   "General",
@@ -45,7 +44,7 @@ function aplanarProductosAdonis(respuesta) {
 const urlCatalogo = (storeId, pagina) =>
   `${ADONIS_BASE}/products/store/${storeId}?query=&page=${pagina}&category=&subCategory=`;
 
-// Recorre todas las páginas del catálogo hasta reunir los productos completos
+// Recorre todas las páginas del catálogo y enriquece cada producto con su stock real (detalle /product/{id}/web)
 async function cargarCatalogoAdonis(storeId, signal) {
   const primera = await pedirJsonAdonis(urlCatalogo(storeId, 1), signal);
   let items = aplanarProductosAdonis(primera);
@@ -53,32 +52,18 @@ async function cargarCatalogoAdonis(storeId, signal) {
   for (let p = 2; p <= ultimaPagina; p++) {
     items = items.concat(aplanarProductosAdonis(await pedirJsonAdonis(urlCatalogo(storeId, p), signal)));
   }
-  return items;
+  const detalles = await Promise.allSettled(
+    items.map((item) => pedirJsonAdonis(`${ADONIS_BASE}/product/${item.id}/web`, signal))
+  );
+  return items.map((item, i) => ({
+    ...item,
+    stock: detalles[i].status === "fulfilled" ? Number(detalles[i].value?.data?.stock ?? 0) : 0,
+  }));
 }
 
 async function cargarTasaAdonis(storeId, signal) {
   const info = await pedirJsonAdonis(`${ADONIS_BASE}/store/${storeId}/payment/info`, signal);
   return Number(info?.data?.store?.referenceRateValue) || 0;
-}
-
-// El SKU/código es la clave única del producto: ID de documento en Firestore y llave de deduplicación
-const claveSku = (code) => String(code ?? "").trim().toUpperCase();
-const idDocumentoProducto = (code) => String(code ?? "").trim().replaceAll("/", "-");
-
-// Un solo documento por SKU: prefiere el que ya usa el SKU como ID y, si empatan, el de mayor stock
-function agruparPorSku(lista) {
-  const mapa = new Map();
-  lista.forEach((p) => {
-    const clave = claveSku(p.code);
-    if (!clave) return;
-    const actual = mapa.get(clave);
-    if (!actual) { mapa.set(clave, p); return; }
-    const esCanonico = p.id === idDocumentoProducto(p.code);
-    const actualEsCanonico = actual.id === idDocumentoProducto(actual.code);
-    if (esCanonico && !actualEsCanonico) mapa.set(clave, p);
-    else if (esCanonico === actualEsCanonico && (Number(p.stock) || 0) > (Number(actual.stock) || 0)) mapa.set(clave, p);
-  });
-  return mapa;
 }
 
 function nombreCategoriaAdonis(item) {
@@ -88,7 +73,7 @@ function nombreCategoriaAdonis(item) {
 // Esquema plano que consumen la tabla, la edición y las exportaciones
 function mapearProductoAdonis(item) {
   return {
-    id: idDocumentoProducto(item.code || item.sku || item.id),
+    id: String(item.code || item.sku || item.id).replaceAll("/", "-"),
     adonisId: item.id,
     code: String(item.code || item.sku || item.id),
     name: item.name || "Sin Nombre",
@@ -103,11 +88,10 @@ function mapearProductoAdonis(item) {
   };
 }
 
-// Con stock numérico rige stock > 0; si Adonis no lo informa, la disponibilidad la marca outOfStock
+// Agotado si Adonis lo marca outOfStock o si no quedan existencias
 function estaAgotado(p) {
   if (p.outOfStock) return true;
-  if (p.stock === undefined || p.stock === null) return false;
-  return Number(p.stock) <= 0;
+  return (Number(p.stock) || 0) <= 0;
 }
 
 const FORM_INICIAL = {
@@ -269,36 +253,14 @@ export default function InventarioPage() {
   // Multi-tenant: tienda activa del usuario (storeId / comercio_id); por defecto Farma D'una Virtual
   const storeId = String(usuario?.storeId || usuario?.comercio_id || STORE_ID_DEFECTO);
   const esPerfilSimple = perfil === "SIMPLE";
-  const [catalogoAdonis, setCatalogoAdonis] = useState([]);
-  const [productosFs, setProductosFs] = useState([]);
+  const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("TODAS");
   const [cargando, setCargando] = useState(true);
-  const [notificacion, setNotificacion] = useState(null); // { tipo: "ok" | "error", texto }
   const [error, setError] = useState("");
   const [tasaAdonis, setTasaAdonis] = useState(0);
   const [recarga, setRecarga] = useState(0);
   const tasa = tasaAdonis || tasaBcv || 0;
-  const productos = useMemo(() => {
-    const fsPorSku = agruparPorSku(productosFs);
-    const resultado = new Map();
-    catalogoAdonis.forEach((item) => {
-      const clave = claveSku(item.code);
-      if (resultado.has(clave)) return;
-      const local = fsPorSku.get(clave);
-      resultado.set(clave, {
-        ...(local || {}),
-        ...item,
-        id: local?.id || item.id,
-        stock: item.stock ?? local?.stock,
-      });
-    });
-    fsPorSku.forEach((local, clave) => {
-      if (!resultado.has(clave)) resultado.set(clave, local);
-    });
-    return [...resultado.values()];
-  }, [catalogoAdonis, productosFs]);
-
   const [modalAbierto, setModalAbierto] = useState(false);
   const [productoEnEdicion, setProductoEnEdicion] = useState(null);
   const fileInputRef = useRef(null);
@@ -316,7 +278,7 @@ export default function InventarioPage() {
       .then(([catalogo, tasa]) => {
         if (controller.signal.aborted) return;
         if (catalogo.status === "fulfilled") {
-          setCatalogoAdonis(catalogo.value.map(mapearProductoAdonis));
+          setProductos(catalogo.value.map(mapearProductoAdonis));
           setError("");
         } else {
           console.error(catalogo.reason);
@@ -330,75 +292,15 @@ export default function InventarioPage() {
     return () => controller.abort();
   }, [storeId, recarga]);
 
-  // Productos guardados en Firestore (stock local, altas manuales); degrada a localStorage sin Firebase
-  useEffect(() => {
-    return escucharColeccion("duna_productos", (items) => {
-      const semilla = items.filter((p) => String(p.id).startsWith("SEED-FAR-"));
-      if (semilla.length > 0) {
-        semilla.forEach((p) => {
-          eliminarDocumento("duna_productos", p.id).catch((e) => console.error(e));
-        });
-      }
-      setProductosFs(items.filter((p) => !String(p.id).startsWith("SEED-FAR-")));
-    });
-  }, []);
-
-  const actualizarProductos = (nuevos, idsEliminados = []) => {
-    nuevos.forEach((p) => {
-      guardarDocumento("duna_productos", p.id, p).catch((e) => console.error(e));
-    });
-    idsEliminados.forEach((id) => {
-      eliminarDocumento("duna_productos", id).catch((e) => console.error(e));
-    });
+  // Altas, ediciones, importaciones y bajas operan sobre el catálogo en memoria (Adonis es la única fuente de verdad)
+  const actualizarProductos = (nuevos) => {
+    setProductos(nuevos);
   };
 
-  // Consulta Adonis y hace upsert en "duna_productos" con el SKU como ID de documento (nunca crea duplicados)
-  const handleSincronizarAdonis = async () => {
+  // Vuelve a consultar Adonis (catálogo + stock real + tasa) y refresca la tabla; no toca Firestore
+  const handleSincronizarAdonis = () => {
     setCargando(true);
-    setNotificacion(null);
-    try {
-      const items = (await cargarCatalogoAdonis(storeId)).map(mapearProductoAdonis);
-      const existentes = await obtenerColeccion("duna_productos");
-      const existentesPorSku = agruparPorSku(existentes);
-
-      const escritos = new Set();
-      const aGuardar = [];
-      items.forEach((item) => {
-        const clave = claveSku(item.code);
-        if (!clave || escritos.has(clave)) return;
-        escritos.add(clave);
-        const previo = existentesPorSku.get(clave);
-        const { id: _omitido, ...previoSinId } = previo || {};
-        // Blindaje de stock: si Adonis no informa existencias, se conserva el stock que ya tenía el documento
-        const stockPrevio = Number(previo?.stock) || 0;
-        const stockFinal = item.stock !== undefined && item.stock !== null ? Number(item.stock) || 0 : stockPrevio > 0 ? stockPrevio : 0;
-        aGuardar.push({
-          ...previoSinId,
-          ...item,
-          id: item.id,
-          stock: stockFinal,
-          status: "ACTIVE",
-          origen: "ADONIS_FARMA",
-        });
-      });
-
-      for (let i = 0; i < aGuardar.length; i += 20) {
-        await Promise.all(aGuardar.slice(i, i + 20).map((p) => guardarDocumento("duna_productos", p.id, p)));
-      }
-
-      // Limpia duplicados heredados: documentos de Adonis con el mismo SKU pero otro ID (su stock ya quedó en el documento del SKU)
-      const heredados = existentes.filter(
-        (p) => escritos.has(claveSku(p.code)) && p.id !== idDocumentoProducto(p.code) && String(p.id).startsWith("ADONIS-")
-      );
-      await Promise.all(heredados.map((p) => eliminarDocumento("duna_productos", p.id)));
-
-      setNotificacion({ tipo: "ok", texto: `✓ ${aGuardar.length} productos sincronizados con éxito en la base de datos` });
-      setRecarga((n) => n + 1);
-    } catch (err) {
-      console.error(err);
-      setNotificacion({ tipo: "error", texto: "No se pudo sincronizar con Adonis. Verifica tu conexión e intenta de nuevo." });
-      setCargando(false);
-    }
+    setRecarga((n) => n + 1);
   };
 
   const handleFileUpload = (e) => {
@@ -469,9 +371,7 @@ export default function InventarioPage() {
             };
           });
 
-        // El Excel reemplaza el catálogo completo: los productos anteriores que no vienen en el archivo se eliminan también en Firestore
-        const idsReemplazados = productos.filter(p => !mapeados.some(m => m.id === p.id)).map(p => p.id);
-        actualizarProductos(mapeados, idsReemplazados);
+        actualizarProductos(mapeados);
         alert(`¡Catálogo importado! Se cargaron ${mapeados.length} productos.`);
       } catch (err) {
         alert("Error al leer el archivo Excel.");
@@ -743,7 +643,7 @@ export default function InventarioPage() {
 
   const handleEliminarProducto = (id) => {
     if (confirm("¿Seguro que deseas eliminar este producto?")) {
-      actualizarProductos(productos.filter(p => p.id !== id), [id]);
+      actualizarProductos(productos.filter(p => p.id !== id));
     }
   };
 
@@ -844,16 +744,6 @@ export default function InventarioPage() {
             Artículos cargados: <strong className="text-slate-900 font-bold">{productos.length}</strong>
           </div>
         </div>
-
-        {notificacion && (
-          <div className={`rounded-xl border px-4 py-3 text-xs font-bold ${
-            notificacion.tipo === "ok"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-rose-200 bg-rose-50 text-rose-700"
-          }`}>
-            {notificacion.texto}
-          </div>
-        )}
 
         {error && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
