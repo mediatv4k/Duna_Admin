@@ -1007,6 +1007,7 @@ export default function POSPage() {
     const clienteActualizado = {
       id: clienteExistente?.id || `cli_${Date.now()}`,
       documento: documentoFinal,
+      cedula: documentoFinal,
       nombre: formVenta.cliente,
       codigoPais: formVenta.paisCodigo,
       telefono: formVenta.telefono || "",
@@ -1014,11 +1015,14 @@ export default function POSPage() {
       sucursalId: usuario?.sucursalId || "",
       condicionVenta: formVenta.condicionVenta,
       limiteCredito: clienteExistente?.limiteCredito || 0,
+      fechaRegistro: clienteExistente?.fechaRegistro || new Date().toISOString(),
     };
-    if (clienteExistente) {
-      actualizarClientes(clientes.map(c => c === clienteExistente ? clienteActualizado : c), clienteActualizado);
-    } else {
-      actualizarClientes([clienteActualizado, ...clientes], clienteActualizado);
+    if (documentoFinal !== "V-00000000") {
+      if (clienteExistente) {
+        actualizarClientes(clientes.map(c => c === clienteExistente ? clienteActualizado : c), clienteActualizado);
+      } else {
+        actualizarClientes([clienteActualizado, ...clientes], clienteActualizado);
+      }
     }
 
     // Adjuntar la venta al turno de caja activo
@@ -1402,7 +1406,7 @@ export default function POSPage() {
           </div>
 
           {/* B) Lista de artículos */}
-          <div className="flex-1 min-h-[12rem] lg:min-h-0 overflow-y-auto">
+          <div className="flex-1 min-h-[12rem] md:min-h-0 overflow-y-auto">
             {renglonesVenta.length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-[11px] text-slate-400">Escanee un código de barras o seleccione un producto para iniciar el ticket.</p>
@@ -1500,6 +1504,12 @@ export default function POSPage() {
   );
 
   const itemsEnTicket = renglonesVenta.reduce((acc, r) => acc + r.cantidad, 0);
+  const ultimoRenglon = renglonesVenta[renglonesVenta.length - 1] || null;
+  const esClienteNuevo =
+    formVenta.numeroDocumento.trim().length >= 5 &&
+    formVenta.numeroDocumento.trim() !== "00000000" &&
+    !clienteCoincidenteActual &&
+    !documentoBloqueado;
 
   const pillClase = (activo) =>
     `px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${
@@ -1596,10 +1606,10 @@ export default function POSPage() {
       </header>
 
       {/* ===== LAYOUT DUAL 65% / 35% ===== */}
-      <main className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+      <main className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
 
         {/* ---------- PANEL IZQUIERDO (65%) ---------- */}
-        <section className="flex-1 lg:flex-none lg:w-[65%] min-h-0 flex flex-col h-full overflow-hidden p-3 lg:p-5">
+        <section className="flex-1 md:flex-none md:w-[65%] min-h-0 flex flex-col h-full overflow-hidden p-3 lg:p-5">
 
           {/* Cabecera operativa fija: fiscal SENIAT, buscador [F2] y chips de categoría (nunca se desplaza) */}
           <div className="shrink-0 bg-white pb-2 space-y-2">
@@ -1632,7 +1642,7 @@ export default function POSPage() {
           <button
             type="button"
             onClick={() => setFiscalMovilAbierto(v => !v)}
-            className="lg:hidden w-full flex items-center justify-between gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-left"
+            className="md:hidden w-full flex items-center justify-between gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-left"
           >
             <span className="min-w-0">
               <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 block">Cliente / Documento fiscal</span>
@@ -1642,7 +1652,7 @@ export default function POSPage() {
             </span>
             <span className="text-[11px] font-bold text-[#FE6712] shrink-0">{fiscalMovilAbierto ? "Ocultar" : "Editar"}</span>
           </button>
-          <div className={`${fiscalMovilAbierto ? "" : "hidden"} lg:block bg-white border border-slate-200 rounded-2xl p-4 space-y-3`}>
+          <div className={`${fiscalMovilAbierto ? "" : "hidden"} md:block bg-white border border-slate-200 rounded-2xl p-4 space-y-3`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 {TIPOS_DOCUMENTO_VENTA.map((t) => (
@@ -1800,20 +1810,13 @@ export default function POSPage() {
               className="w-full text-xs py-1.5 px-3 rounded-lg border border-slate-200 bg-white placeholder:text-slate-400 focus:outline-none focus:border-[#FE6712]"
             />
 
+            {esClienteNuevo && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Nuevo Cliente — se registrará al procesar la venta
+              </span>
+            )}
             {errorDocumento && (
               <p className="text-[10px] text-rose-600 font-bold">La Cédula o RIF es obligatoria para emitir la factura.</p>
-            )}
-            {clienteCoincidenteActual && cantidadFacturasPendientes > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-amber-700">
-                <span>⚠️ Deuda: <span className="font-mono">${deudaTotalUsd.toFixed(2)}</span> (~Bs. <span className="font-mono">{deudaTotalBs.toFixed(2)}</span>) • {cantidadFacturasPendientes} fact.</span>
-                <button
-                  type="button"
-                  onClick={() => setModalAuditoriaAbierto(true)}
-                  className="px-2.5 py-1 bg-white border border-amber-300 rounded-lg text-[10px] font-black text-amber-700 hover:bg-amber-100 transition shrink-0"
-                >
-                  Ver / Cobrar Facturas
-                </button>
-              </div>
             )}
             {avisoClienteEnEspera && (
               <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-sky-700">
@@ -1882,13 +1885,13 @@ export default function POSPage() {
           ) : (
             <div className="min-w-0">
               {/* Cabecera de columnas fija dentro del área con scroll */}
-              <div className="sticky top-0 z-10 bg-white border-b border-slate-200 grid grid-cols-[44px_1fr_84px_60px] md:grid-cols-[48px_1fr_120px_120px_90px_110px_72px] gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              <div className="sticky top-0 z-10 bg-white border-b border-slate-200 grid grid-cols-[44px_1fr_84px_60px] xl:grid-cols-[48px_1fr_120px_120px_90px_110px_72px] gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
                 <span>Foto</span>
                 <span>Nombre y presentación</span>
-                <span className="hidden md:block">Código/SKU</span>
-                <span className="hidden md:block">Categoría</span>
+                <span className="hidden xl:block">Código/SKU</span>
+                <span className="hidden xl:block">Categoría</span>
                 <span className="text-right">Precio USD</span>
-                <span className="hidden md:block text-right">Precio Bs.</span>
+                <span className="hidden xl:block text-right">Precio Bs.</span>
                 <span className="text-center">Stock</span>
               </div>
 
@@ -1901,7 +1904,7 @@ export default function POSPage() {
                     type="button"
                     disabled={agotado}
                     onClick={() => handleAgregarProductoDirecto(p)}
-                    className={`w-full text-left grid grid-cols-[44px_1fr_84px_60px] md:grid-cols-[48px_1fr_120px_120px_90px_110px_72px] gap-3 px-3 py-2 items-center border-b border-slate-100 transition ${
+                    className={`w-full text-left grid grid-cols-[44px_1fr_84px_60px] xl:grid-cols-[48px_1fr_120px_120px_90px_110px_72px] gap-3 px-3 py-2 items-center border-b border-slate-100 transition ${
                       agotado ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50 cursor-pointer focus:outline-none focus:bg-orange-50"
                     }`}
                   >
@@ -1913,12 +1916,12 @@ export default function POSPage() {
                     />
                     <div className="min-w-0">
                       <span className="text-xs font-bold text-slate-800 leading-snug block">{p.name}</span>
-                      <span className="md:hidden text-[10px] font-mono text-slate-400 block">{p.code}</span>
+                      <span className="xl:hidden text-[10px] font-mono text-slate-400 block">{p.code}</span>
                     </div>
-                    <span className="hidden md:block text-[11px] font-mono text-slate-400 truncate">{p.code}</span>
-                    <span className="hidden md:block text-[11px] text-slate-500 truncate">{p.categoria || "—"}</span>
+                    <span className="hidden xl:block text-[11px] font-mono text-slate-400 truncate">{p.code}</span>
+                    <span className="hidden xl:block text-[11px] text-slate-500 truncate">{p.categoria || "—"}</span>
                     <span className="text-right text-sm font-black font-mono text-slate-900">${p.price.toFixed(2)}</span>
-                    <span className="hidden md:block text-right text-[11px] font-mono text-slate-400">Bs. {formatearBs(p.price, tasaBcv)}</span>
+                    <span className="hidden xl:block text-right text-[11px] font-mono text-slate-400">Bs. {formatearBs(p.price, tasaBcv)}</span>
                     <span
                       className={`justify-self-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
                         agotado
@@ -1939,17 +1942,22 @@ export default function POSPage() {
         </section>
 
         {/* ---------- PANEL DERECHO (35%): Ticket lateral ---------- */}
-        <aside className="hidden lg:flex lg:w-[35%] bg-white border-l border-slate-200 flex-col min-h-0">
+        <aside className="hidden md:flex md:w-[35%] bg-white border-l border-slate-200 flex-col min-h-0">
           {panelTicket}
         </aside>
       </main>
 
       {/* Barra flotante inferior (móvil/tablet): resumen del ticket y acceso al cobro */}
-      <div className="lg:hidden shrink-0 border-t border-slate-200 bg-white px-3 py-2 flex items-center gap-3">
+      <div className="md:hidden shrink-0 border-t border-slate-200 bg-white px-3 py-2 flex items-center gap-3 cursor-pointer" onClick={() => setTicketMovilAbierto(true)}>
         <div className="min-w-0 flex-1">
           <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 block">
             <span className="font-mono">{itemsEnTicket}</span> ítem{itemsEnTicket === 1 ? "" : "s"} en el ticket
           </span>
+          {ultimoRenglon && (
+            <span className="text-[11px] text-slate-500 truncate block">
+              Último: <span className="font-bold text-slate-700">{ultimoRenglon.nombre}</span>
+            </span>
+          )}
           <span className="text-lg font-black font-mono text-slate-900 leading-none">${totalFacturaUsd.toFixed(2)}</span>
           <span className="text-[11px] font-mono text-orange-600 ml-2">Bs. {formatearBs(totalFacturaUsd, tasaBcv)}</span>
         </div>
@@ -1964,7 +1972,7 @@ export default function POSPage() {
 
       {/* Bottom sheet del ticket fiscal (móvil/tablet) */}
       {ticketMovilAbierto && (
-        <div className="lg:hidden absolute inset-0 z-30 bg-slate-100/70 flex flex-col justify-end" onClick={() => setTicketMovilAbierto(false)}>
+        <div className="md:hidden absolute inset-0 z-30 bg-slate-100/70 flex flex-col justify-end" onClick={() => setTicketMovilAbierto(false)}>
           <div
             className="bg-white rounded-t-2xl border-t border-slate-200 shadow-2xl h-[88%] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-200"
             onClick={(e) => e.stopPropagation()}
