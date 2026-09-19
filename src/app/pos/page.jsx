@@ -322,7 +322,6 @@ export default function POSPage() {
   const inputDocumentoRef = useRef(null);
 
   const [modalCobroAbierto, setModalCobroAbierto] = useState(false);
-  const [modalAuditoriaAbierto, setModalAuditoriaAbierto] = useState(false);
 
   const [modalTurnoAbierto, setModalTurnoAbierto] = useState(false);
   const [montoInicialUsd, setMontoInicialUsd] = useState("");
@@ -332,6 +331,7 @@ export default function POSPage() {
   const [modalConfigPagoMovilAbierto, setModalConfigPagoMovilAbierto] = useState(false);
   const [formConfigPagoMovil, setFormConfigPagoMovil] = useState(CONFIG_PAGOMOVIL_DEFECTO);
   const [copiadoDatosPagoMovil, setCopiadoDatosPagoMovil] = useState(false);
+  const [campoCopiadoPM, setCampoCopiadoPM] = useState("");
 
   const [pagoMovilActivo, setPagoMovilActivo] = useState(null);
   const [tokenPagoActivo, setTokenPagoActivo] = useState(null);
@@ -596,14 +596,6 @@ export default function POSPage() {
     setAvisoClienteEnEspera(null);
   };
 
-  // Auditoría reactiva de deuda: facturas pendientes del cliente detectado por cédula/RIF
-  const facturasAdeudadasCliente = clienteCoincidenteActual
-    ? cuentas.filter(c => extraerDigitos(c.documento) === extraerDigitos(clienteCoincidenteActual.documento) && c.saldo > 0)
-    : [];
-  const deudaTotalUsd = facturasAdeudadasCliente.reduce((acc, c) => acc + c.saldo, 0);
-  const deudaTotalBs = deudaTotalUsd * tasaBcv;
-  const cantidadFacturasPendientes = facturasAdeudadasCliente.length;
-
   const productoSeleccionado = productosInventario.find(p => p.id === itemActual.productoId) || null;
   const esGastronomiaConVariantes = productoSeleccionado?.nicho === "Gastronomía & Heladería" && (productoSeleccionado.variantes || []).length > 0;
 
@@ -815,49 +807,35 @@ export default function POSPage() {
     formVenta.referencia.trim().length > 0 &&
     referenciasUsadas.has(formVenta.referencia.trim());
 
-  // Datos y mensaje para el despacho de cobro por Pago Móvil vía WhatsApp
+  // Datos de cobro por Pago Móvil (banco receptor configurado en la caja)
   const bancoReceptorSeleccionado = bancosVenezuela.find(b => b.codigo === formVenta.bancoReceptor) || null;
   const montoPagoMovilUsd = formVenta.condicionVenta === "CONTADO" ? totalFacturaUsd : montoAbonadoUsd;
-  const mensajePagoMovil = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza el Pago Móvil con estos datos:\n🏦 Banco: *${bancoReceptorSeleccionado ? bancoReceptorSeleccionado.display : "(configura el banco receptor)"}*\n📱 Teléfono: *${configPagoMovil.telefonoReceptor || "(sin configurar)"}*\n🆔 Cédula/RIF: *${configPagoMovil.rifReceptor || "(sin configurar)"}*\n👤 Titular: *${configPagoMovil.nombreTitular || "(sin configurar)"}*\n💰 Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (≈ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nPor favor responde a este mensaje con la captura del comprobante o el número de referencia para emitir tu factura.`;
-
-  const handleEnviarDatosPagoMovil = () => {
-    const numero = `${(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`;
-    window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensajePagoMovil)}`, "_blank");
-  };
+  const datosPagoMovil = [
+    { campo: "banco", etiqueta: "Banco", valor: bancoReceptorSeleccionado ? bancoReceptorSeleccionado.display : "Sin configurar" },
+    { campo: "tel", etiqueta: "Teléfono", valor: configPagoMovil.telefonoReceptor || "Sin configurar" },
+    { campo: "rif", etiqueta: "Cédula / RIF", valor: configPagoMovil.rifReceptor || "Sin configurar" },
+    { campo: "monto", etiqueta: "Monto", valor: `Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}` },
+  ];
 
   const handleCopiarDatosPagoMovil = async () => {
+    const [banco, tel, rif, monto] = datosPagoMovil.map(d => d.valor);
     try {
-      await navigator.clipboard.writeText(mensajePagoMovil);
+      await navigator.clipboard.writeText(`Banco: ${banco} | Tel: ${tel} | RIF: ${rif} | Monto: ${monto}`);
       setCopiadoDatosPagoMovil(true);
       setTimeout(() => setCopiadoDatosPagoMovil(false), 1500);
     } catch (e) {
-      alert("No se pudo copiar automáticamente. Copia el mensaje manualmente.");
+      alert("No se pudo copiar automáticamente.");
     }
   };
 
-  // Crea la intención de pago con token y abre WhatsApp con el link de autoservicio
-  const handleEnviarLinkPagoMovil = () => {
-    const token = generarTokenPago();
-    const nuevaIntencion = {
-      id: token,
-      token,
-      fechaCreacion: new Date().toLocaleString("es-VE"),
-      clienteNombre: formVenta.cliente,
-      clienteTelefono: `${formVenta.paisCodigo}${limpiarTelefono(formVenta.telefono)}`,
-      montoUsd: montoPagoMovilUsd,
-      montoBs: montoPagoMovilUsd * tasaBcv,
-      renglones: renglonesVenta,
-      status: "PENDIENTE",
-      referenciaReportada: "",
-      imagenComprobante: null,
-    };
-    guardarDocumento("duna_pagos_pendientes", token, nuevaIntencion).catch((e) => console.error(e));
-    setTokenPagoActivo(token);
-
-    const link = `${obtenerOrigen()}/pago/${token}`;
-    const numero = `${(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`;
-    const mensaje = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza tu Pago Móvil desde este link seguro:\n${link}\n\n💰 Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (≈ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nAl confirmar tu pago allí, tu factura queda lista para validarse en caja.`;
-    window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`, "_blank");
+  const handleCopiarCampoPagoMovil = async (valor, campo) => {
+    try {
+      await navigator.clipboard.writeText(String(valor));
+      setCampoCopiadoPM(campo);
+      setTimeout(() => setCampoCopiadoPM(""), 1500);
+    } catch (e) {
+      alert("No se pudo copiar automáticamente.");
+    }
   };
 
   // Escucha reactiva (Firestore en vivo, o polling local): detecta si el cliente ya reportó el comprobante
@@ -1077,7 +1055,6 @@ export default function POSPage() {
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
-    setModalAuditoriaAbierto(false);
     setTokenPagoActivo(null);
     setAvisoClienteEnEspera(null);
     // Venta formalizada: el borrador de recuperación ya no aplica
@@ -1194,7 +1171,6 @@ export default function POSPage() {
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
-    setModalAuditoriaAbierto(false);
     setTokenPagoActivo(null);
     setAvisoClienteEnEspera(null);
     setNumeroTicketActual(`FAC-${Date.now().toString().slice(-6)}`);
@@ -1304,19 +1280,6 @@ export default function POSPage() {
     actualizarVentasEnEspera(ventasEnEspera.filter(v => v.id !== id));
   };
 
-  const handleEnviarWhatsapp = (cuenta) => {
-    const numero = `${(cuenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(cuenta.telefono)}`;
-    const saldoBs = formatearBs(cuenta.saldo, tasaBcv);
-    const lineasProductos = (cuenta.renglones || []).map(r => {
-      const variantePart = r.variante ? ` (${r.variante})` : "";
-      const extrasPart = r.toppings && r.toppings.length > 0 ? ` [Extras: ${r.toppings.map(t => t.nombre).join(", ")}]` : "";
-      return `• ${r.cantidad}x ${r.nombre}${variantePart}${extrasPart} - $${r.subtotal.toFixed(2)}`;
-    }).join("\n");
-
-    const mensaje = `Estimado(a) *${cuenta.cliente}*, le saludamos de *D'una*. Le compartimos el estado de su cuenta:\n${lineasProductos}\nFactura: *${cuenta.id}* | Total: *$${cuenta.total.toFixed(2)}* | Abonado: *$${cuenta.abonado.toFixed(2)}* | Saldo pendiente: *$${cuenta.saldo.toFixed(2)} USD* (*Bs. ${saldoBs}* a Tasa BCV: Bs. ${tasaBcv}). Quedamos atentos a su comprobante.`;
-    window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`, "_blank");
-  };
-
   const tasaOficial = tasaAdonis || tasaBcv;
 
   // Categorías y grilla del catálogo
@@ -1376,7 +1339,6 @@ export default function POSPage() {
         else if (modalTicketAbierto) setModalTicketAbierto(false);
         else if (modalCobroAbierto) setModalCobroAbierto(false);
         else if (modalEsperaAbierto) setModalEsperaAbierto(false);
-        else if (modalAuditoriaAbierto) setModalAuditoriaAbierto(false);
         else if (modalTurnoAbierto) setModalTurnoAbierto(false);
         else if (ticketMovilAbierto) setTicketMovilAbierto(false);
         else if (busquedaProducto) setBusquedaProducto("");
@@ -1995,7 +1957,7 @@ export default function POSPage() {
       {/* Modal de Cobro / Medios de Pago */}
       {modalCobroAbierto && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-3 sm:space-y-5 max-h-[95vh] overflow-y-auto">
 
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
@@ -2007,7 +1969,7 @@ export default function POSPage() {
               </button>
             </div>
 
-            <form onSubmit={handleCrearVenta} className="space-y-4">
+            <form onSubmit={handleCrearVenta} className="space-y-3">
               <div>
                 <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Condición de Venta</label>
                 <div className="flex items-center gap-1.5">
@@ -2031,9 +1993,9 @@ export default function POSPage() {
               )}
 
               {formVenta.condicionVenta === "CONTADO" ? (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
-                  <p className="text-[11px] font-bold text-emerald-700">Venta de Contado: se cobra el 100% del total al momento, sin dejar saldo.</p>
-                  <p className="text-lg font-black text-emerald-800 mt-1">${totalFacturaUsd.toFixed(2)}</p>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-bold text-emerald-700">Venta de Contado: se cobra el 100% al momento.</p>
+                  <p className="text-base font-black font-mono text-emerald-800 shrink-0">${totalFacturaUsd.toFixed(2)}</p>
                 </div>
               ) : (
                 <div>
@@ -2119,7 +2081,7 @@ export default function POSPage() {
                       )}
                     </div>
                   )}
-                  {requiereDatosTransferenciaVenta && (
+                  {requiereDatosTransferenciaVenta && formVenta.metodoPago !== "Pago Móvil" && (
                     <div className="grid grid-cols-2 gap-3">
                       <select value={formVenta.bancoEmisor} onChange={(e) => setFormVenta({ ...formVenta, bancoEmisor: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
                         <option value="">Banco emisor...</option>
@@ -2148,64 +2110,75 @@ export default function POSPage() {
                     </div>
                   )}
                   {formVenta.metodoPago === "Pago Móvil" && (
-                    <div className="space-y-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={handleEnviarLinkPagoMovil}
-                        disabled={!formVenta.telefono}
-                        title={formVenta.telefono ? "Crear link de autoservicio y enviarlo por WhatsApp" : "Sin teléfono del cliente registrado"}
-                        className="w-full px-3 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none shadow-sm shadow-orange-500/20"
-                      >
-                        <Smartphone className="w-3.5 h-3.5" /> Enviar Link de Pago Móvil por WhatsApp
-                      </button>
+                    <div className="space-y-2">
+                      <div className="rounded-xl border border-orange-200 bg-orange-50/40 px-3 py-2 flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Total a Pagar</span>
+                        <span className="text-right">
+                          <span className="text-xl font-black font-mono text-slate-900">Bs. {formatearBs(montoPagoMovilUsd, tasaBcv)}</span>
+                          <span className="text-[11px] font-mono text-slate-400 ml-2">≈ ${montoPagoMovilUsd.toFixed(2)}</span>
+                        </span>
+                      </div>
 
-                      {pagoMovilActivo?.status === "REPORTADO" ? (
-                        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 flex items-center gap-3 animate-pulse">
-                          <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                            <Check className="w-4 h-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <span className="text-[11px] font-black text-emerald-700 block">✓ ¡Comprobante reportado por el cliente!</span>
-                            <span className="text-[10px] text-emerald-600">Referencia: {pagoMovilActivo.referenciaReportada || "—"}</span>
-                          </div>
-                          {pagoMovilActivo.imagenComprobante && (
-                            /* eslint-disable-next-line @next/next/no-img-element -- miniatura Base64 generada por el cliente, incompatible con next/image */
-                            <img
-                              src={pagoMovilActivo.imagenComprobante}
-                              alt="Comprobante"
-                              onClick={() => setModalComprobanteAbierto(true)}
-                              className="w-10 h-10 rounded-lg object-cover border border-emerald-300 cursor-pointer shrink-0 hover:opacity-80 transition"
-                            />
-                          )}
-                        </div>
-                      ) : tokenPagoActivo ? (
-                        <p className="text-[10px] text-slate-400 text-center">Esperando que el cliente reporte su pago desde el link enviado…</p>
-                      ) : null}
-
-                      <div className="flex flex-col sm:flex-row items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={handleEnviarDatosPagoMovil}
-                          disabled={!formVenta.telefono}
-                          title={formVenta.telefono ? "Enviar datos de pago móvil por WhatsApp" : "Sin teléfono del cliente registrado"}
-                          className="w-full sm:flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" /> Enviar Datos Pago Móvil por WhatsApp
-                        </button>
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-500">Datos para tu Pago Móvil</h4>
                         <button
                           type="button"
                           onClick={handleCopiarDatosPagoMovil}
-                          className="w-full sm:w-auto px-3 py-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 shrink-0"
+                          className="shrink-0 px-2.5 py-1 rounded-full bg-orange-50 hover:bg-[#FE6712] text-[#FE6712] hover:text-white border border-orange-200 text-[10px] font-black transition whitespace-nowrap"
                         >
-                          <Copy className="w-3.5 h-3.5" /> {copiadoDatosPagoMovil ? "¡Copiado!" : "Copiar Datos"}
+                          {copiadoDatosPagoMovil ? "✓ ¡Copiado!" : "📋 Copiar Todo"}
                         </button>
                       </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {datosPagoMovil.map((d) => (
+                          <div key={d.campo} className="flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white min-w-0">
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400 block">{d.etiqueta}</span>
+                              <span className="text-xs font-bold font-mono text-slate-900 truncate block">{d.valor}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopiarCampoPagoMovil(d.valor, d.campo)}
+                              title={`Copiar ${d.etiqueta}`}
+                              className="shrink-0 w-6 h-6 rounded-md bg-orange-50 hover:bg-[#FE6712] text-[#FE6712] hover:text-white flex items-center justify-center transition border border-orange-200"
+                            >
+                              {campoCopiadoPM === d.campo ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-500 pt-1">Reporta tu pago</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          required
+                          value={formVenta.referencia}
+                          onChange={(e) => setFormVenta({ ...formVenta, referencia: e.target.value })}
+                          placeholder="N° de referencia *"
+                          className={`w-full px-2.5 py-2 border rounded-xl text-xs font-mono focus:outline-none ${
+                            referenciaVentaDuplicada ? "bg-rose-50 border-rose-400" : "bg-white border-slate-200 focus:border-[#FE6712]"
+                          }`}
+                        />
+                        <select
+                          value={formVenta.bancoEmisor}
+                          onChange={(e) => setFormVenta({ ...formVenta, bancoEmisor: e.target.value })}
+                          className="w-full px-2 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-[#FE6712]"
+                        >
+                          <option value="">Banco emisor...</option>
+                          {bancosVenezuela.map(b => <option key={b.codigo} value={b.codigo}>{b.display}</option>)}
+                        </select>
+                      </div>
+                      {referenciaVentaDuplicada && (
+                        <p className="text-[10px] text-rose-600 font-bold">Esta referencia ya fue registrada anteriormente.</p>
+                      )}
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="sticky bottom-0 bg-white flex items-center justify-end gap-2 pt-3 pb-1 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalCobroAbierto(false)}
@@ -2348,80 +2321,6 @@ export default function POSPage() {
                 )}
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Modal Auditoría de Deuda */}
-      {modalAuditoriaAbierto && clienteCoincidenteActual && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-lg font-black text-slate-900">Auditoría de Deuda</h3>
-                <p className="text-xs text-slate-400">{clienteCoincidenteActual.nombre} • {clienteCoincidenteActual.documento}</p>
-              </div>
-              <button onClick={() => setModalAuditoriaAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-center">
-                <span className="text-[11px] font-bold text-rose-500 uppercase block">Deuda Total</span>
-                <div className="text-2xl font-black text-rose-700">${deudaTotalUsd.toFixed(2)}</div>
-                <div className="text-xs text-rose-500 font-semibold">Bs. {formatearBs(deudaTotalUsd, tasaBcv)}</div>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center flex flex-col justify-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">Facturas Pendientes</span>
-                <div className="text-2xl font-black text-slate-900">{cantidadFacturasPendientes}</div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
-                  <tr>
-                    <th className="p-3">Factura / Fecha</th>
-                    <th className="p-3">Total</th>
-                    <th className="p-3">Saldo</th>
-                    <th className="p-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {facturasAdeudadasCliente.map(f => (
-                    <tr key={f.id} className="hover:bg-slate-50/50 transition">
-                      <td className="p-3">
-                        <strong className="block font-black text-slate-900">{f.id}</strong>
-                        <span className="text-[11px] text-slate-400">{f.fecha}</span>
-                      </td>
-                      <td className="p-3 font-bold text-slate-800">${f.total.toFixed(2)}</td>
-                      <td className="p-3">
-                        <span className="font-black text-rose-600 block">${f.saldo.toFixed(2)}</span>
-                        <span className="text-[10px] text-rose-400 font-semibold">Bs. {formatearBs(f.saldo, tasaBcv)}</span>
-                      </td>
-                      <td className="p-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleEnviarWhatsapp(f)}
-                          disabled={!f.telefono}
-                          title={f.telefono ? "Cobrar por WhatsApp" : "Sin teléfono registrado"}
-                          className="p-1.5 text-emerald-600 hover:text-white hover:bg-emerald-600 rounded-lg border border-emerald-200 hover:border-emerald-600 transition disabled:opacity-30 disabled:pointer-events-none"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-slate-100">
-              <button type="button" onClick={() => setModalAuditoriaAbierto(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition">
-                Cerrar y continuar con la venta
-              </button>
-            </div>
           </div>
         </div>
       )}
