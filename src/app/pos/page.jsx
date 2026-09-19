@@ -301,6 +301,8 @@ export default function POSPage() {
   const [cuentas, setCuentas] = useState([]);
   const [productosInventario, setProductosInventario] = useState([]);
   const [tipoDocumentoVenta, setTipoDocumentoVenta] = useState("FACTURA");
+  const [fiscalMovilAbierto, setFiscalMovilAbierto] = useState(false);
+  const [ticketMovilAbierto, setTicketMovilAbierto] = useState(false);
   const [categoriaActiva, setCategoriaActiva] = useState("TODAS");
   const [tasaAdonis, setTasaAdonis] = useState(0);
   const [adonisConectado, setAdonisConectado] = useState(true);
@@ -1059,6 +1061,7 @@ export default function POSPage() {
       })
       .catch((err) => console.warn("Adonis PICKUP no disponible:", err));
 
+    setTicketMovilAbierto(false);
     setModalCobroAbierto(false);
     setModalAutorizacionAbierto(false);
     setAutorizacionActual(null);
@@ -1371,6 +1374,7 @@ export default function POSPage() {
         else if (modalEsperaAbierto) setModalEsperaAbierto(false);
         else if (modalAuditoriaAbierto) setModalAuditoriaAbierto(false);
         else if (modalTurnoAbierto) setModalTurnoAbierto(false);
+        else if (ticketMovilAbierto) setTicketMovilAbierto(false);
         else if (busquedaProducto) setBusquedaProducto("");
         else handleSalirTerminal();
       }
@@ -1378,6 +1382,124 @@ export default function POSPage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   });
+
+  const panelTicket = (
+    <>
+
+          {/* A) Cabecera del ticket */}
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
+            <div>
+              <h2 className="text-sm font-black text-slate-900">Ticket en Curso</h2>
+              <span className="text-[11px] font-mono font-bold text-[#FE6712]">{numeroTicketActual}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleLimpiarTicket}
+              className="px-3 py-1.5 bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Limpiar Ticket
+            </button>
+          </div>
+
+          {/* B) Lista de artículos */}
+          <div className="flex-1 min-h-[12rem] lg:min-h-0 overflow-y-auto">
+            {renglonesVenta.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-[11px] text-slate-400">Escanee un código de barras o seleccione un producto para iniciar el ticket.</p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {renglonesVenta.map((r) => (
+                  <li key={r.tempId} className="px-4 py-2.5 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-slate-800 block leading-snug">{r.nombre}</span>
+                        <span className="text-[10px] font-mono text-slate-400">{r.codigo} · ${r.precioUnitario.toFixed(2)} c/u</span>
+                        {(r.variante || r.toppings.length > 0) && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {r.variante && <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px] font-bold">{r.variante}</span>}
+                            {r.toppings.map((t) => (
+                              <span key={t.id} className="px-1.5 py-0.5 rounded bg-orange-50 text-[#FE6712] text-[9px] font-bold">{t.nombre}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button type="button" onClick={() => handleEliminarRenglon(r.tempId)} title="Quitar" className="p-1 text-slate-300 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition shrink-0">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => handleDecrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center font-bold">−</button>
+                        <input
+                          type="number"
+                          min="1"
+                          value={r.cantidad}
+                          onChange={(e) => handleActualizarCantidadRenglon(r.tempId, e.target.value)}
+                          className="w-11 text-center px-1 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-mono font-bold"
+                        />
+                        <button type="button" onClick={() => handleIncrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center font-bold">+</button>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-black font-mono text-slate-900 block text-sm">${r.subtotal.toFixed(2)}</span>
+                        <span className="text-[10px] font-mono text-slate-400">Bs. {formatearBs(r.subtotal, tasaBcv)}</span>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* C) Desglose fiscal SENIAT */}
+          <div className="px-4 py-3 border-t border-slate-200 space-y-1 text-[11px] shrink-0">
+            {[
+              ["Subtotal Bruto", subtotalBrutoUsd],
+              ["Ventas Exentas", 0],
+              ["Base Imponible 16%", baseImponibleUsd],
+              ["IVA 16%", ivaUsd],
+            ].map(([etiqueta, monto]) => (
+              <div key={etiqueta} className="flex items-center justify-between text-slate-500">
+                <span className="font-semibold">{etiqueta}</span>
+                <span className="font-mono">
+                  <span className="text-slate-800 font-bold">${monto.toFixed(2)}</span>
+                  <span className="text-slate-400 ml-2">Bs. {formatearBs(monto, tasaBcv)}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* D) Totalizador bimonetario */}
+          <div className="mx-4 mb-3 rounded-2xl border border-orange-200 bg-orange-50/40 px-4 py-3 shrink-0">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total a Pagar</span>
+            <div className="text-3xl font-black font-mono text-slate-900">${totalFacturaUsd.toFixed(2)}</div>
+            <div className="text-lg font-bold font-mono text-orange-600">Bs. {formatearBs(totalFacturaUsd, tasaBcv)}</div>
+          </div>
+
+          {/* E) Acciones de pie */}
+          <div className="px-4 pb-4 flex items-stretch gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handlePonerEnEspera}
+              disabled={renglonesVenta.length === 0}
+              title="Pausar esta venta y liberar el mostrador"
+              className="px-4 py-3 bg-white hover:bg-amber-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <PauseCircle className="w-4 h-4" /> Retener [F8]
+            </button>
+            <button
+              type="button"
+              onClick={handleAbrirCobro}
+              disabled={renglonesVenta.length === 0 || !formVenta.numeroDocumento.trim() || !formVenta.cliente.trim()}
+              className="flex-1 px-4 py-3.5 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-sm font-black transition flex items-center justify-center gap-2 shadow-sm shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+            >
+              <CreditCard className="w-4 h-4" /> COBRAR Y FACTURAR [F12]
+            </button>
+          </div>
+    </>
+  );
+
+  const itemsEnTicket = renglonesVenta.reduce((acc, r) => acc + r.cantidad, 0);
 
   const pillClase = (activo) =>
     `px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${
@@ -1388,15 +1510,20 @@ export default function POSPage() {
     <>
     {/* Overlay flotante centrado de la Terminal POS */}
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
-    <div className="w-full max-w-[98vw] xl:max-w-[1600px] h-[94vh] bg-white text-slate-800 font-sans rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="w-full max-w-[98vw] xl:max-w-[1600px] h-[95vh] bg-white text-slate-800 font-sans rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden relative animate-in fade-in zoom-in-95 duration-150">
 
       {/* ===== 1. BARRA SUPERIOR DE ESTADO ===== */}
       <header className="border-b border-slate-200 bg-white shrink-0">
-        <div className="px-4 lg:px-6 py-2.5 grid grid-cols-1 md:grid-cols-3 items-center gap-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/" title="Volver al inicio" className="w-9 h-9 rounded-xl bg-white hover:bg-slate-50 flex items-center justify-center text-slate-500 transition border border-slate-200 shrink-0">
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
+        <div className="px-3 lg:px-6 py-2 flex flex-wrap items-center gap-x-3 gap-y-2 md:grid md:grid-cols-3">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1 md:flex-none">
+            <button
+              type="button"
+              onClick={handleSalirTerminal}
+              title="Salir de la caja [Esc]"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 rounded-lg text-[11px] font-black transition whitespace-nowrap shrink-0"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Salir de Caja / Volver
+            </button>
             <Image
               src="/duna-pos.png"
               alt="D'una POS"
@@ -1417,7 +1544,7 @@ export default function POSPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2.5 md:justify-end">
+          <div className="flex items-center gap-2.5 ml-auto md:ml-0 md:justify-end">
             <span className="text-xs font-bold text-slate-700 truncate max-w-[10rem]">{usuario?.nombre || "Cajero"}</span>
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold whitespace-nowrap ${
               adonisConectado
@@ -1427,65 +1554,55 @@ export default function POSPage() {
               <span className={`w-2 h-2 rounded-full ${adonisConectado ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
               {adonisConectado ? "Adonis Core Conectado" : "Adonis Core Sin Conexión"}
             </span>
-            <button
-              type="button"
-              onClick={handleSalirTerminal}
-              title="Salir de la terminal [Esc]"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 rounded-lg text-[11px] font-black transition whitespace-nowrap"
-            >
-              <X className="w-3.5 h-3.5" /> Salir de Terminal
-            </button>
           </div>
         </div>
 
-        {/* Utilidades de caja */}
-        <div className="px-4 lg:px-6 py-1.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+        {/* Herramientas de mostrador: turno/arqueo, ventas en espera y reimpresión */}
+        <div className="px-3 lg:px-6 py-1.5 border-t border-slate-100 flex items-center justify-between gap-2 overflow-x-auto">
+          <div className="flex items-center gap-2 shrink-0">
             {turnoActivo ? (
-              <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg text-[11px] font-bold">
+              <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap">
                 <Wallet className="w-3.5 h-3.5" />
                 Turno {turnoActivo.id} — ABIERTO · <span className="font-mono">{turnoActivo.ventasIds.length}</span> venta(s)
               </span>
             ) : (
-              <span className="text-[11px] text-slate-400 font-semibold">Sin turno de caja abierto</span>
+              <span className="text-[11px] text-slate-400 font-semibold whitespace-nowrap">Sin turno de caja abierto</span>
             )}
             {turnoActivo ? (
-              <button onClick={handleCerrarTurno} className="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-[11px] font-bold transition">
+              <button onClick={handleCerrarTurno} className="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-[11px] font-bold transition whitespace-nowrap">
                 Cerrar Turno / Arqueo
               </button>
             ) : (
-              <button onClick={() => setModalTurnoAbierto(true)} className="px-2.5 py-1 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-lg text-[11px] font-bold transition">
+              <button onClick={() => setModalTurnoAbierto(true)} className="px-2.5 py-1 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-lg text-[11px] font-bold transition whitespace-nowrap">
                 Abrir Turno de Caja
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setModalEsperaAbierto(true)}
               disabled={ventasEnEspera.length === 0}
-              className="px-2.5 py-1 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-bold transition disabled:opacity-40 disabled:pointer-events-none"
+              title="Ver ventas en espera (retener la venta actual: F8)"
+              className="px-2.5 py-1 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-bold transition disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap"
             >
-              ⏸ En Espera (<span className="font-mono">{ventasEnEspera.length}</span>)
+              ⏸ En Espera [F8] (<span className="font-mono">{ventasEnEspera.length}</span>)
             </button>
-            <button type="button" onClick={() => abrirTicket()} className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-lg text-[11px] font-bold transition">
+            <button type="button" onClick={() => abrirTicket()} className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-lg text-[11px] font-bold transition whitespace-nowrap">
               Reimprimir Ticket
             </button>
-            <Link href="/cxc" className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-lg text-[11px] font-bold transition whitespace-nowrap">
-              Administración CXC →
-            </Link>
           </div>
         </div>
       </header>
 
       {/* ===== LAYOUT DUAL 65% / 35% ===== */}
-      <main className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+      <main className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
 
         {/* ---------- PANEL IZQUIERDO (65%) ---------- */}
-        <section className="lg:w-[65%] flex flex-col h-full overflow-hidden p-4 lg:p-5">
+        <section className="flex-1 lg:flex-none lg:w-[65%] min-h-0 flex flex-col h-full overflow-hidden p-3 lg:p-5">
 
           {/* Cabecera operativa fija: fiscal SENIAT, buscador [F2] y chips de categoría (nunca se desplaza) */}
-          <div className="shrink-0 bg-white pb-3 space-y-3">
+          <div className="shrink-0 bg-white pb-2 space-y-2">
 
           {/* Banner de Recuperación de Borrador (crash recovery) */}
           {draftDetectado && (
@@ -1511,8 +1628,21 @@ export default function POSPage() {
             </div>
           )}
 
-          {/* A) Cabecera Fiscal SENIAT */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+          {/* A) Cabecera Fiscal SENIAT (en móvil se despliega con el resumen del cliente) */}
+          <button
+            type="button"
+            onClick={() => setFiscalMovilAbierto(v => !v)}
+            className="lg:hidden w-full flex items-center justify-between gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-left"
+          >
+            <span className="min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 block">Cliente / Documento fiscal</span>
+              <span className="text-xs font-bold text-slate-800 truncate block">
+                {formVenta.cliente ? `${formVenta.cliente} · ${formVenta.tipoDocumento}${formVenta.numeroDocumento}` : "Sin cliente asignado"}
+              </span>
+            </span>
+            <span className="text-[11px] font-bold text-[#FE6712] shrink-0">{fiscalMovilAbierto ? "Ocultar" : "Editar"}</span>
+          </button>
+          <div className={`${fiscalMovilAbierto ? "" : "hidden"} lg:block bg-white border border-slate-200 rounded-2xl p-4 space-y-3`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 {TIPOS_DOCUMENTO_VENTA.map((t) => (
@@ -1750,7 +1880,18 @@ export default function POSPage() {
               No hay productos que coincidan con la búsqueda.
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="min-w-0">
+              {/* Cabecera de columnas fija dentro del área con scroll */}
+              <div className="sticky top-0 z-10 bg-white border-b border-slate-200 grid grid-cols-[44px_1fr_84px_60px] md:grid-cols-[48px_1fr_120px_120px_90px_110px_72px] gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <span>Foto</span>
+                <span>Nombre y presentación</span>
+                <span className="hidden md:block">Código/SKU</span>
+                <span className="hidden md:block">Categoría</span>
+                <span className="text-right">Precio USD</span>
+                <span className="hidden md:block text-right">Precio Bs.</span>
+                <span className="text-center">Stock</span>
+              </div>
+
               {productosGrilla.map((p) => {
                 const agotado = !tieneExistencias(p);
                 const stockNum = Number(p.stock) || 0;
@@ -1760,20 +1901,26 @@ export default function POSPage() {
                     type="button"
                     disabled={agotado}
                     onClick={() => handleAgregarProductoDirecto(p)}
-                    className={`text-left bg-white border border-slate-200 rounded-2xl p-3 flex flex-col gap-2 transition ${
-                      agotado ? "opacity-50 cursor-not-allowed" : "hover:border-[#FE6712] hover:shadow-md"
+                    className={`w-full text-left grid grid-cols-[44px_1fr_84px_60px] md:grid-cols-[48px_1fr_120px_120px_90px_110px_72px] gap-3 px-3 py-2 items-center border-b border-slate-100 transition ${
+                      agotado ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50 cursor-pointer focus:outline-none focus:bg-orange-50"
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- miniatura remota de dominios variables, incompatible con next/image sin configurar */}
                     <img
                       src={p.image || undefined}
                       alt=""
-                      className="w-full h-24 rounded-xl object-cover bg-slate-50 border border-slate-100"
+                      className="w-10 h-10 rounded-lg object-cover bg-slate-50 border border-slate-200"
                     />
-                    <span className="text-[10px] font-mono text-slate-400">{p.code}</span>
-                    <span className="text-xs font-bold text-slate-800 leading-snug line-clamp-2 min-h-[2rem]">{p.name}</span>
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold text-slate-800 leading-snug block">{p.name}</span>
+                      <span className="md:hidden text-[10px] font-mono text-slate-400 block">{p.code}</span>
+                    </div>
+                    <span className="hidden md:block text-[11px] font-mono text-slate-400 truncate">{p.code}</span>
+                    <span className="hidden md:block text-[11px] text-slate-500 truncate">{p.categoria || "—"}</span>
+                    <span className="text-right text-sm font-black font-mono text-slate-900">${p.price.toFixed(2)}</span>
+                    <span className="hidden md:block text-right text-[11px] font-mono text-slate-400">Bs. {formatearBs(p.price, tasaBcv)}</span>
                     <span
-                      className={`self-start px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                      className={`justify-self-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
                         agotado
                           ? "bg-rose-50 text-rose-700 border-rose-200"
                           : stockNum > 3
@@ -1781,12 +1928,8 @@ export default function POSPage() {
                           : "bg-orange-50 text-orange-700 border-orange-200"
                       }`}
                     >
-                      {agotado ? "Agotado" : `Stock: ${p.stock}`}
+                      {agotado ? "0" : p.stock}
                     </span>
-                    <div className="mt-auto">
-                      <span className="text-lg font-black font-mono text-slate-900 block leading-none">${p.price.toFixed(2)}</span>
-                      <span className="text-[11px] font-mono text-slate-400">Bs. {formatearBs(p.price, tasaBcv)}</span>
-                    </div>
                   </button>
                 );
               })}
@@ -1796,120 +1939,48 @@ export default function POSPage() {
         </section>
 
         {/* ---------- PANEL DERECHO (35%): Ticket lateral ---------- */}
-        <aside className="lg:w-[35%] bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col lg:min-h-0">
-
-          {/* A) Cabecera del ticket */}
-          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
-            <div>
-              <h2 className="text-sm font-black text-slate-900">Ticket en Curso</h2>
-              <span className="text-[11px] font-mono font-bold text-[#FE6712]">{numeroTicketActual}</span>
-            </div>
-            <button
-              type="button"
-              onClick={handleLimpiarTicket}
-              className="px-3 py-1.5 bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Limpiar Ticket
-            </button>
-          </div>
-
-          {/* B) Lista de artículos */}
-          <div className="flex-1 min-h-[12rem] lg:min-h-0 overflow-y-auto">
-            {renglonesVenta.length === 0 ? (
-              <div className="p-8 text-center">
-                <p className="text-[11px] text-slate-400">Escanee un código de barras o seleccione un producto para iniciar el ticket.</p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {renglonesVenta.map((r) => (
-                  <li key={r.tempId} className="px-4 py-2.5 space-y-1.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className="text-xs font-bold text-slate-800 block leading-snug">{r.nombre}</span>
-                        <span className="text-[10px] font-mono text-slate-400">{r.codigo} · ${r.precioUnitario.toFixed(2)} c/u</span>
-                        {(r.variante || r.toppings.length > 0) && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {r.variante && <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px] font-bold">{r.variante}</span>}
-                            {r.toppings.map((t) => (
-                              <span key={t.id} className="px-1.5 py-0.5 rounded bg-orange-50 text-[#FE6712] text-[9px] font-bold">{t.nombre}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <button type="button" onClick={() => handleEliminarRenglon(r.tempId)} title="Quitar" className="p-1 text-slate-300 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition shrink-0">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1">
-                        <button type="button" onClick={() => handleDecrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center font-bold">−</button>
-                        <input
-                          type="number"
-                          min="1"
-                          value={r.cantidad}
-                          onChange={(e) => handleActualizarCantidadRenglon(r.tempId, e.target.value)}
-                          className="w-11 text-center px-1 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-mono font-bold"
-                        />
-                        <button type="button" onClick={() => handleIncrementarRenglon(r.tempId)} className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center font-bold">+</button>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-black font-mono text-slate-900 block text-sm">${r.subtotal.toFixed(2)}</span>
-                        <span className="text-[10px] font-mono text-slate-400">Bs. {formatearBs(r.subtotal, tasaBcv)}</span>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* C) Desglose fiscal SENIAT */}
-          <div className="px-4 py-3 border-t border-slate-200 space-y-1 text-[11px] shrink-0">
-            {[
-              ["Subtotal Bruto", subtotalBrutoUsd],
-              ["Ventas Exentas", 0],
-              ["Base Imponible 16%", baseImponibleUsd],
-              ["IVA 16%", ivaUsd],
-            ].map(([etiqueta, monto]) => (
-              <div key={etiqueta} className="flex items-center justify-between text-slate-500">
-                <span className="font-semibold">{etiqueta}</span>
-                <span className="font-mono">
-                  <span className="text-slate-800 font-bold">${monto.toFixed(2)}</span>
-                  <span className="text-slate-400 ml-2">Bs. {formatearBs(monto, tasaBcv)}</span>
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* D) Totalizador bimonetario */}
-          <div className="mx-4 mb-3 rounded-2xl border border-orange-200 bg-orange-50/40 px-4 py-3 shrink-0">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total a Pagar</span>
-            <div className="text-3xl font-black font-mono text-slate-900">${totalFacturaUsd.toFixed(2)}</div>
-            <div className="text-lg font-bold font-mono text-orange-600">Bs. {formatearBs(totalFacturaUsd, tasaBcv)}</div>
-          </div>
-
-          {/* E) Acciones de pie */}
-          <div className="px-4 pb-4 flex items-stretch gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handlePonerEnEspera}
-              disabled={renglonesVenta.length === 0}
-              title="Pausar esta venta y liberar el mostrador"
-              className="px-4 py-3 bg-white hover:bg-amber-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1.5 whitespace-nowrap"
-            >
-              <PauseCircle className="w-4 h-4" /> Retener [F8]
-            </button>
-            <button
-              type="button"
-              onClick={handleAbrirCobro}
-              disabled={renglonesVenta.length === 0 || !formVenta.numeroDocumento.trim() || !formVenta.cliente.trim()}
-              className="flex-1 px-4 py-3.5 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-sm font-black transition flex items-center justify-center gap-2 shadow-sm shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
-            >
-              <CreditCard className="w-4 h-4" /> COBRAR Y FACTURAR [F12]
-            </button>
-          </div>
+        <aside className="hidden lg:flex lg:w-[35%] bg-white border-l border-slate-200 flex-col min-h-0">
+          {panelTicket}
         </aside>
       </main>
+
+      {/* Barra flotante inferior (móvil/tablet): resumen del ticket y acceso al cobro */}
+      <div className="lg:hidden shrink-0 border-t border-slate-200 bg-white px-3 py-2 flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 block">
+            <span className="font-mono">{itemsEnTicket}</span> ítem{itemsEnTicket === 1 ? "" : "s"} en el ticket
+          </span>
+          <span className="text-lg font-black font-mono text-slate-900 leading-none">${totalFacturaUsd.toFixed(2)}</span>
+          <span className="text-[11px] font-mono text-orange-600 ml-2">Bs. {formatearBs(totalFacturaUsd, tasaBcv)}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setTicketMovilAbierto(true)}
+          className="px-4 py-3 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-sm font-black transition flex items-center gap-2 shadow-sm shadow-orange-500/20 whitespace-nowrap"
+        >
+          <CreditCard className="w-4 h-4" /> Ver Ticket / Cobrar
+        </button>
+      </div>
+
+      {/* Bottom sheet del ticket fiscal (móvil/tablet) */}
+      {ticketMovilAbierto && (
+        <div className="lg:hidden absolute inset-0 z-30 bg-slate-100/70 flex flex-col justify-end" onClick={() => setTicketMovilAbierto(false)}>
+          <div
+            className="bg-white rounded-t-2xl border-t border-slate-200 shadow-2xl h-[88%] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b border-slate-100">
+              <span className="text-[11px] font-black uppercase tracking-wide text-slate-500">Ticket fiscal</span>
+              <button type="button" onClick={() => setTicketMovilAbierto(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition" title="Cerrar">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 flex flex-col">
+              {panelTicket}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </div>
 
