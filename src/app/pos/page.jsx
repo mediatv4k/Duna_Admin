@@ -1482,7 +1482,10 @@ export default function POSPage() {
       <main className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
 
         {/* ---------- PANEL IZQUIERDO (65%) ---------- */}
-        <section className="lg:w-[65%] lg:overflow-y-auto p-4 lg:p-5 space-y-4">
+        <section className="lg:w-[65%] flex flex-col h-full overflow-hidden p-4 lg:p-5">
+
+          {/* Cabecera operativa fija: fiscal SENIAT, buscador [F2] y chips de categoría (nunca se desplaza) */}
+          <div className="shrink-0 bg-white pb-3 space-y-3">
 
           {/* Banner de Recuperación de Borrador (crash recovery) */}
           {draftDetectado && (
@@ -1734,7 +1737,10 @@ export default function POSPage() {
             )}
           </div>
 
-          {/* C) Grilla de productos */}
+          </div>
+
+          {/* C) Grilla de productos: única zona con scroll vertical */}
+          <div className="flex-1 overflow-y-auto pr-1 pb-4 min-h-0 [scrollbar-width:thin] [scrollbar-color:#cbd5e1_transparent]">
           {productosInventario.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-xs font-semibold text-slate-400">
               {adonisConectado ? "Cargando catálogo desde Adonis..." : "No se pudo cargar el catálogo de Adonis."}
@@ -1786,6 +1792,7 @@ export default function POSPage() {
               })}
             </div>
           )}
+          </div>
         </section>
 
         {/* ---------- PANEL DERECHO (35%): Ticket lateral ---------- */}
