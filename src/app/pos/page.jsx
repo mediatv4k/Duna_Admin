@@ -477,14 +477,18 @@ export default function POSPage() {
   const esGastronomiaConVariantes = productoSeleccionado?.nicho === "Gastronomía & Heladería" && (productoSeleccionado.variantes || []).length > 0;
 
   // Buscador predictivo limpio: si está vacío, no se muestra ningún catálogo previo
-  const productosFiltradosCombo = (busquedaProducto
+  const coincidenciasBusqueda = busquedaProducto
     ? productosInventario.filter(p =>
-        p.name.toLowerCase().includes(busquedaProducto.toLowerCase()) ||
-        p.code.toLowerCase().includes(busquedaProducto.toLowerCase()) ||
+        (p.name || "").toLowerCase().includes(busquedaProducto.toLowerCase()) ||
+        (p.code || "").toLowerCase().includes(busquedaProducto.toLowerCase()) ||
+        (p.sku || "").toLowerCase().includes(busquedaProducto.toLowerCase()) ||
         (p.barcode || "").toLowerCase().includes(busquedaProducto.toLowerCase())
       )
-    : []
-  ).slice(0, 8);
+    : [];
+  // Solo se ofrecen productos con existencias: evita ventas en negativo en el mostrador
+  const tieneExistencias = (p) => Number(p.stock) > 0 && !p.outOfStock;
+  const productosFiltradosCombo = coincidenciasBusqueda.filter(tieneExistencias).slice(0, 8);
+  const soloAgotadosEnBusqueda = coincidenciasBusqueda.length > 0 && productosFiltradosCombo.length === 0;
 
   const handleSeleccionarProducto = (prod) => {
     setItemActual({ productoId: prod.id, varianteNombre: "", toppingsSeleccionadosIds: [], cantidad: 1 });
@@ -571,7 +575,7 @@ export default function POSPage() {
   const handleBusquedaProductoKeyDown = (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    const match = productosInventario.find(p => p.barcode && p.barcode === busquedaProducto.trim()) ||
+    const match = productosInventario.find(p => p.barcode && p.barcode === busquedaProducto.trim() && tieneExistencias(p)) ||
                   productosFiltradosCombo[0];
     if (!match) return;
 
@@ -1478,6 +1482,11 @@ export default function POSPage() {
                     <span className="text-xs font-black text-slate-900 shrink-0">${p.price.toFixed(2)}</span>
                   </button>
                 ))}
+              </div>
+            )}
+            {mostrarSugerenciasProducto && busquedaProducto && soloAgotadosEnBusqueda && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2.5 text-center text-[11px] font-bold text-slate-500">
+                Sin existencias disponibles en tienda
               </div>
             )}
           </div>

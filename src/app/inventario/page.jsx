@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import {
@@ -11,7 +11,7 @@ import {
 import { useCurrency } from "@/context/CurrencyContext";
 import { useBusinessProfile } from "@/context/BusinessProfileContext";
 import { useUser } from "@/context/UserContext";
-import { guardarDocumento, eliminarDocumento } from "@/lib/firebase";
+import { escucharColeccion, obtenerColeccion, guardarDocumento, eliminarDocumento } from "@/lib/firebase";
 
 const NICHOS = [
   "General",
@@ -61,6 +61,26 @@ async function cargarTasaAdonis(storeId, signal) {
   return Number(info?.data?.store?.referenceRateValue) || 0;
 }
 
+// El SKU/código es la clave única del producto: ID de documento en Firestore y llave de deduplicación
+const claveSku = (code) => String(code ?? "").trim().toUpperCase();
+const idDocumentoProducto = (code) => String(code ?? "").trim().replaceAll("/", "-");
+
+// Un solo documento por SKU: prefiere el que ya usa el SKU como ID y, si empatan, el de mayor stock
+function agruparPorSku(lista) {
+  const mapa = new Map();
+  lista.forEach((p) => {
+    const clave = claveSku(p.code);
+    if (!clave) return;
+    const actual = mapa.get(clave);
+    if (!actual) { mapa.set(clave, p); return; }
+    const esCanonico = p.id === idDocumentoProducto(p.code);
+    const actualEsCanonico = actual.id === idDocumentoProducto(actual.code);
+    if (esCanonico && !actualEsCanonico) mapa.set(clave, p);
+    else if (esCanonico === actualEsCanonico && (Number(p.stock) || 0) > (Number(actual.stock) || 0)) mapa.set(clave, p);
+  });
+  return mapa;
+}
+
 function nombreCategoriaAdonis(item) {
   return item.category?.name || (typeof item.category === "string" ? item.category : "") || item.internalCategory || "";
 }
@@ -68,7 +88,7 @@ function nombreCategoriaAdonis(item) {
 // Esquema plano que consumen la tabla, la edición y las exportaciones
 function mapearProductoAdonis(item) {
   return {
-    id: `ADONIS-${item.id}`,
+    id: idDocumentoProducto(item.code || item.sku || item.id),
     adonisId: item.id,
     code: String(item.code || item.sku || item.id),
     name: item.name || "Sin Nombre",
@@ -249,14 +269,36 @@ export default function InventarioPage() {
   // Multi-tenant: tienda activa del usuario (storeId / comercio_id); por defecto Farma D'una Virtual
   const storeId = String(usuario?.storeId || usuario?.comercio_id || STORE_ID_DEFECTO);
   const esPerfilSimple = perfil === "SIMPLE";
-  const [productos, setProductos] = useState([]);
+  const [catalogoAdonis, setCatalogoAdonis] = useState([]);
+  const [productosFs, setProductosFs] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("TODAS");
   const [cargando, setCargando] = useState(true);
+  const [notificacion, setNotificacion] = useState(null); // { tipo: "ok" | "error", texto }
   const [error, setError] = useState("");
   const [tasaAdonis, setTasaAdonis] = useState(0);
   const [recarga, setRecarga] = useState(0);
   const tasa = tasaAdonis || tasaBcv || 0;
+  const productos = useMemo(() => {
+    const fsPorSku = agruparPorSku(productosFs);
+    const resultado = new Map();
+    catalogoAdonis.forEach((item) => {
+      const clave = claveSku(item.code);
+      if (resultado.has(clave)) return;
+      const local = fsPorSku.get(clave);
+      resultado.set(clave, {
+        ...(local || {}),
+        ...item,
+        id: local?.id || item.id,
+        stock: item.stock ?? local?.stock,
+      });
+    });
+    fsPorSku.forEach((local, clave) => {
+      if (!resultado.has(clave)) resultado.set(clave, local);
+    });
+    return [...resultado.values()];
+  }, [catalogoAdonis, productosFs]);
+
   const [modalAbierto, setModalAbierto] = useState(false);
   const [productoEnEdicion, setProductoEnEdicion] = useState(null);
   const fileInputRef = useRef(null);
@@ -274,7 +316,7 @@ export default function InventarioPage() {
       .then(([catalogo, tasa]) => {
         if (controller.signal.aborted) return;
         if (catalogo.status === "fulfilled") {
-          setProductos(catalogo.value.map(mapearProductoAdonis));
+          setCatalogoAdonis(catalogo.value.map(mapearProductoAdonis));
           setError("");
         } else {
           console.error(catalogo.reason);
@@ -288,8 +330,20 @@ export default function InventarioPage() {
     return () => controller.abort();
   }, [storeId, recarga]);
 
+  // Productos guardados en Firestore (stock local, altas manuales); degrada a localStorage sin Firebase
+  useEffect(() => {
+    return escucharColeccion("duna_productos", (items) => {
+      const semilla = items.filter((p) => String(p.id).startsWith("SEED-FAR-"));
+      if (semilla.length > 0) {
+        semilla.forEach((p) => {
+          eliminarDocumento("duna_productos", p.id).catch((e) => console.error(e));
+        });
+      }
+      setProductosFs(items.filter((p) => !String(p.id).startsWith("SEED-FAR-")));
+    });
+  }, []);
+
   const actualizarProductos = (nuevos, idsEliminados = []) => {
-    setProductos(nuevos);
     nuevos.forEach((p) => {
       guardarDocumento("duna_productos", p.id, p).catch((e) => console.error(e));
     });
@@ -298,10 +352,53 @@ export default function InventarioPage() {
     });
   };
 
-  // Vuelve a consultar Adonis y refresca la tabla; no escribe en Firestore
-  const handleSincronizarAdonis = () => {
+  // Consulta Adonis y hace upsert en "duna_productos" con el SKU como ID de documento (nunca crea duplicados)
+  const handleSincronizarAdonis = async () => {
     setCargando(true);
-    setRecarga((n) => n + 1);
+    setNotificacion(null);
+    try {
+      const items = (await cargarCatalogoAdonis(storeId)).map(mapearProductoAdonis);
+      const existentes = await obtenerColeccion("duna_productos");
+      const existentesPorSku = agruparPorSku(existentes);
+
+      const escritos = new Set();
+      const aGuardar = [];
+      items.forEach((item) => {
+        const clave = claveSku(item.code);
+        if (!clave || escritos.has(clave)) return;
+        escritos.add(clave);
+        const previo = existentesPorSku.get(clave);
+        const { id: _omitido, ...previoSinId } = previo || {};
+        // Blindaje de stock: si Adonis no informa existencias, se conserva el stock que ya tenía el documento
+        const stockPrevio = Number(previo?.stock) || 0;
+        const stockFinal = item.stock !== undefined && item.stock !== null ? Number(item.stock) || 0 : stockPrevio > 0 ? stockPrevio : 0;
+        aGuardar.push({
+          ...previoSinId,
+          ...item,
+          id: item.id,
+          stock: stockFinal,
+          status: "ACTIVE",
+          origen: "ADONIS_FARMA",
+        });
+      });
+
+      for (let i = 0; i < aGuardar.length; i += 20) {
+        await Promise.all(aGuardar.slice(i, i + 20).map((p) => guardarDocumento("duna_productos", p.id, p)));
+      }
+
+      // Limpia duplicados heredados: documentos de Adonis con el mismo SKU pero otro ID (su stock ya quedó en el documento del SKU)
+      const heredados = existentes.filter(
+        (p) => escritos.has(claveSku(p.code)) && p.id !== idDocumentoProducto(p.code) && String(p.id).startsWith("ADONIS-")
+      );
+      await Promise.all(heredados.map((p) => eliminarDocumento("duna_productos", p.id)));
+
+      setNotificacion({ tipo: "ok", texto: `✓ ${aGuardar.length} productos sincronizados con éxito en la base de datos` });
+      setRecarga((n) => n + 1);
+    } catch (err) {
+      console.error(err);
+      setNotificacion({ tipo: "error", texto: "No se pudo sincronizar con Adonis. Verifica tu conexión e intenta de nuevo." });
+      setCargando(false);
+    }
   };
 
   const handleFileUpload = (e) => {
@@ -747,6 +844,16 @@ export default function InventarioPage() {
             Artículos cargados: <strong className="text-slate-900 font-bold">{productos.length}</strong>
           </div>
         </div>
+
+        {notificacion && (
+          <div className={`rounded-xl border px-4 py-3 text-xs font-bold ${
+            notificacion.tipo === "ok"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-rose-200 bg-rose-50 text-rose-700"
+          }`}>
+            {notificacion.texto}
+          </div>
+        )}
 
         {error && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
