@@ -27,6 +27,43 @@ const METODOS_PAGO = [
 
 const METODOS_CON_REFERENCIA = ["Pago Móvil", "Transf. Mismo Banco", "Transf. Interbancaria"];
 
+const ADONIS_CATALOGO_URL = "https://dev.carjos-marketplace.cloud/products/store/47";
+const ADONIS_CATALOGO_HEADERS = {
+  apiKey: "bf8f1b64-6342-48c5-af05-501e4c15a6cb",
+  "Content-Type": "application/json",
+};
+
+async function pedirPaginaCatalogoAdonis(pagina, signal) {
+  const res = await fetch(`${ADONIS_CATALOGO_URL}?query=&page=${pagina}&category=&subCategory=`, {
+    headers: ADONIS_CATALOGO_HEADERS,
+    signal,
+  });
+  if (!res.ok) throw new Error(`Adonis respondió HTTP ${res.status}`);
+  return res.json();
+}
+
+// Catálogo en vivo: aplana data.products[].data y recorre todas las páginas; conserva el id numérico real de Adonis
+async function cargarCatalogoAdonisPos(signal) {
+  const aplanar = (resp) => (resp?.data?.products || []).flatMap((grupo) => grupo.data || []);
+  const primera = await pedirPaginaCatalogoAdonis(1, signal);
+  let items = aplanar(primera);
+  const ultimaPagina = Number(primera?.data?.meta?.last_page) || 1;
+  for (let p = 2; p <= ultimaPagina; p++) {
+    items = items.concat(aplanar(await pedirPaginaCatalogoAdonis(p, signal)));
+  }
+  return items.map((item) => ({
+    ...item,
+    id: item.id,
+    adonisId: item.id,
+    code: String(item.code || item.id),
+    name: item.name || "Sin Nombre",
+    price: Number(item.price) || 0,
+    image: item.image || "",
+    categoria: item.category?.name || (typeof item.category === "string" ? item.category : "") || item.internalCategory || "",
+    outOfStock: Boolean(item.outOfStock),
+  }));
+}
+
 const ADONIS_PURCHASE_URL = "https://dev.carjos-marketplace.cloud/delivery/request/purchase/web";
 const ADONIS_API_KEY = "bf8f1b64-6342-48c5-af05-501e4c15a6cb";
 
@@ -346,21 +383,17 @@ export default function POSPage() {
     inputDocumentoRef.current?.focus();
   }, []);
 
-  // Sincronización en tiempo real con Firestore (colección "duna_productos"); sin variables de entorno,
-  // degrada suavemente a localStorage.
+  // Catálogo de productos en vivo desde AdonisJS (fuente única; ya no se lee Firestore)
   useEffect(() => {
-    return escucharColeccion("duna_productos", (items) => {
-      // Limpieza: elimina cualquier remanente del antiguo catálogo semilla de demostración
-      const semilla = items.filter((p) => String(p.id).startsWith("SEED-FAR-"));
-      if (semilla.length > 0) {
-        semilla.forEach((p) => {
-          eliminarDocumento("duna_productos", p.id).catch((e) => console.error(e));
-        });
-        setProductosInventario(items.filter((p) => !String(p.id).startsWith("SEED-FAR-")));
-        return;
-      }
-      setProductosInventario(items);
-    });
+    const controller = new AbortController();
+    cargarCatalogoAdonisPos(controller.signal)
+      .then((items) => {
+        if (!controller.signal.aborted) setProductosInventario(items);
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") console.error("No se pudo cargar el catálogo de Adonis:", e);
+      });
+    return () => controller.abort();
   }, []);
 
   // Sincronización en tiempo real con Firestore (colección "duna_clientes"); sin variables de entorno,
@@ -413,9 +446,6 @@ export default function POSPage() {
 
   const actualizarProductosInventario = (nuevos) => {
     setProductosInventario(nuevos);
-    nuevos.forEach((p) => {
-      guardarDocumento("duna_productos", p.id, p).catch((e) => console.error(e));
-    });
   };
 
   const actualizarClientes = (nuevos, clienteModificado) => {
@@ -547,7 +577,7 @@ export default function POSPage() {
       )
     : [];
   // Solo se ofrecen productos con existencias: evita ventas en negativo en el mostrador
-  const tieneExistencias = (p) => Number(p.stock) > 0 && !p.outOfStock;
+  const tieneExistencias = (p) => !p.outOfStock;
   const productosFiltradosCombo = coincidenciasBusqueda.filter(tieneExistencias).slice(0, 8);
   const soloAgotadosEnBusqueda = coincidenciasBusqueda.length > 0 && productosFiltradosCombo.length === 0;
 
@@ -913,6 +943,7 @@ export default function POSPage() {
           const nuevoStock = nuevasVariantes.reduce((acc, v) => acc + (Number(v.stock) || 0), 0);
           return { ...p, variantes: nuevasVariantes, stock: nuevoStock };
         }
+        if (p.stock === undefined || p.stock === null) return p;
         return { ...p, stock: Math.max(0, p.stock - r.cantidad) };
       });
     });
@@ -1541,7 +1572,7 @@ export default function POSPage() {
                     <img src={p.image} alt="" className="w-8 h-8 rounded-lg object-cover bg-slate-100 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <span className="font-bold text-slate-800 text-xs block truncate">{p.name}</span>
-                      <span className="text-[10px] text-slate-400">{p.code} • Stock: {p.stock}</span>
+                      <span className="text-[10px] text-slate-400">{p.code} • Stock: {p.stock ?? "—"}</span>
                     </div>
                     <span className="text-xs font-black text-slate-900 shrink-0">${p.price.toFixed(2)}</span>
                   </button>
