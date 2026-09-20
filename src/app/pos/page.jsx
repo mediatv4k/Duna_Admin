@@ -330,7 +330,7 @@ export default function POSPage() {
   const [configPagoMovil, setConfigPagoMovil] = useState(CONFIG_PAGOMOVIL_DEFECTO);
   const [modalConfigPagoMovilAbierto, setModalConfigPagoMovilAbierto] = useState(false);
   const [formConfigPagoMovil, setFormConfigPagoMovil] = useState(CONFIG_PAGOMOVIL_DEFECTO);
-  const [copiadoLinkPago, setCopiadoLinkPago] = useState(false);
+  const reporteAplicadoRef = useRef(null);
   const [pagoMovilActivo, setPagoMovilActivo] = useState(null);
   const [tokenPagoActivo, setTokenPagoActivo] = useState(null);
 
@@ -808,15 +808,16 @@ export default function POSPage() {
   // Monto a cobrar por Pago Móvil (los datos bancarios los ve el cliente en su enlace público)
   const montoPagoMovilUsd = formVenta.condicionVenta === "CONTADO" ? totalFacturaUsd : montoAbonadoUsd;
 
-  // Crea la intención de pago con token y copia el enlace público (/pago/[token]) al portapapeles
-  const handleCopiarLinkPagoMovil = async () => {
+  // Crea la orden de pago con token y abre WhatsApp con el link público (/pago/[token]) para el cliente
+  const handleEnviarLinkPagoMovil = () => {
     const token = generarTokenPago();
+    const telefonoCliente = `${(formVenta.paisCodigo || "+58").replace("+", "")}${limpiarTelefono(formVenta.telefono)}`;
     const nuevaIntencion = {
       id: token,
       token,
       fechaCreacion: new Date().toLocaleString("es-VE"),
       clienteNombre: formVenta.cliente,
-      clienteTelefono: `${formVenta.paisCodigo}${limpiarTelefono(formVenta.telefono)}`,
+      clienteTelefono: telefonoCliente,
       montoUsd: montoPagoMovilUsd,
       montoBs: montoPagoMovilUsd * tasaBcv,
       datosCobro: configPagoMovil,
@@ -825,22 +826,22 @@ export default function POSPage() {
       referenciaReportada: "",
     };
     guardarDocumento("duna_pagos_pendientes", token, nuevaIntencion).catch((e) => console.error(e));
+    reporteAplicadoRef.current = null;
+    setPagoMovilActivo(null);
     setTokenPagoActivo(token);
-    try {
-      await navigator.clipboard.writeText(`${obtenerOrigen()}/pago/${token}`);
-      setCopiadoLinkPago(true);
-      setTimeout(() => setCopiadoLinkPago(false), 1500);
-    } catch (e) {
-      alert("No se pudo copiar el enlace automáticamente.");
-    }
+
+    const link = `${obtenerOrigen()}/pago/${token}`;
+    const mensaje = `Hola *${formVenta.cliente || "cliente"}*, para completar tu compra realiza tu Pago Móvil desde este link seguro:\n${link}\n\n💰 Monto: *Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}* (≈ $${montoPagoMovilUsd.toFixed(2)} USD)\n\nAl reportar tu pago allí, tu factura queda lista para validarse en caja.`;
+    window.open(`https://wa.me/${telefonoCliente}?text=${encodeURIComponent(mensaje)}`, "_blank");
   };
 
-  // Escucha reactiva (Firestore en vivo, o polling local): detecta si el cliente ya reportó su pago
+  // Escucha reactiva (Firestore en vivo, o polling local): cuando el cliente reporta, se autocompletan referencia y banco emisor
   useEffect(() => {
     if (!tokenPagoActivo) return undefined;
     return escucharDocumento("duna_pagos_pendientes", tokenPagoActivo, (pago) => {
       setPagoMovilActivo(pago);
-      if (pago && pago.status === "REPORTADO") {
+      if (pago && pago.status === "REPORTADO" && reporteAplicadoRef.current !== tokenPagoActivo) {
+        reporteAplicadoRef.current = tokenPagoActivo;
         setFormVenta(prev => ({
           ...prev,
           referencia: pago.referenciaReportada || prev.referencia,
@@ -1960,7 +1961,7 @@ export default function POSPage() {
       {/* Modal de Cobro / Medios de Pago */}
       {modalCobroAbierto && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-3 sm:space-y-5 h-auto overflow-hidden">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-3 sm:space-y-5 h-auto max-h-[90vh] overflow-hidden">
 
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
@@ -2124,17 +2125,19 @@ export default function POSPage() {
 
                       <button
                         type="button"
-                        onClick={handleCopiarLinkPagoMovil}
-                        className="w-full h-9 px-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5"
+                        onClick={handleEnviarLinkPagoMovil}
+                        disabled={!formVenta.telefono}
+                        title={formVenta.telefono ? "Crear el enlace de pago y enviarlo por WhatsApp al cliente" : "El cliente no tiene teléfono registrado"}
+                        className="w-full h-9 px-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
                       >
-                        {copiadoLinkPago ? "¡Enlace copiado!" : "🔗 Copiar Link de Pago"}
+                        📲 Enviar Link de Pago por WhatsApp
                       </button>
                       {pagoMovilActivo?.status === "REPORTADO" ? (
                         <p className="text-[11px] font-bold text-emerald-700 text-center">
                           ✓ El cliente reportó su pago · Ref. <span className="font-mono">{pagoMovilActivo.referenciaReportada || "—"}</span>
                         </p>
                       ) : tokenPagoActivo ? (
-                        <p className="text-[10px] text-slate-400 text-center">Esperando el reporte del cliente…</p>
+                        <p className="text-[11px] text-slate-500 text-center">Esperando el reporte del cliente...</p>
                       ) : null}
 
                       <div className="grid grid-cols-2 gap-2">
