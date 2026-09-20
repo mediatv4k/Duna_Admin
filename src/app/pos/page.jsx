@@ -333,9 +333,6 @@ export default function POSPage() {
   const [copiadoDatosPagoMovil, setCopiadoDatosPagoMovil] = useState(false);
   const [campoCopiadoPM, setCampoCopiadoPM] = useState("");
 
-  const [pagoMovilActivo, setPagoMovilActivo] = useState(null);
-  const [tokenPagoActivo, setTokenPagoActivo] = useState(null);
-  const [modalComprobanteAbierto, setModalComprobanteAbierto] = useState(false);
 
   const [draftDetectado, setDraftDetectado] = useState(null);
   const [ventasEnEspera, setVentasEnEspera] = useState([]);
@@ -838,17 +835,6 @@ export default function POSPage() {
     }
   };
 
-  // Escucha reactiva (Firestore en vivo, o polling local): detecta si el cliente ya reportó el comprobante
-  useEffect(() => {
-    if (!tokenPagoActivo) return undefined;
-    return escucharDocumento("duna_pagos_pendientes", tokenPagoActivo, (pago) => {
-      setPagoMovilActivo(pago);
-      if (pago && pago.status === "REPORTADO") {
-        setFormVenta(prev => ({ ...prev, referencia: pago.referenciaReportada || prev.referencia }));
-      }
-    }, 2000);
-  }, [tokenPagoActivo]);
-
   // Genera el QR (data URL) apuntando al portal móvil del supervisor cada vez que hay un token nuevo pendiente
   useEffect(() => {
     if (!autorizacionActual || autorizacionActual.status !== "PENDIENTE") return undefined;
@@ -1055,7 +1041,6 @@ export default function POSPage() {
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
-    setTokenPagoActivo(null);
     setAvisoClienteEnEspera(null);
     // Venta formalizada: el borrador de recuperación ya no aplica
     localStorage.removeItem("duna_pos_draft");
@@ -1171,7 +1156,6 @@ export default function POSPage() {
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
-    setTokenPagoActivo(null);
     setAvisoClienteEnEspera(null);
     setNumeroTicketActual(`FAC-${Date.now().toString().slice(-6)}`);
     inputDocumentoRef.current?.focus();
@@ -1244,7 +1228,6 @@ export default function POSPage() {
     setBusquedaProducto("");
     setDocumentoBloqueado(false);
     setErrorDocumento(false);
-    setTokenPagoActivo(null);
     setAvisoClienteEnEspera(null);
     localStorage.removeItem("duna_pos_draft");
     setDraftDetectado(null);
@@ -1334,7 +1317,6 @@ export default function POSPage() {
       } else if (e.key === "Escape") {
         if (pinEmergenciaAbierto) setPinEmergenciaAbierto(false);
         else if (modalAutorizacionAbierto) setModalAutorizacionAbierto(false);
-        else if (modalComprobanteAbierto) setModalComprobanteAbierto(false);
         else if (modalConfigPagoMovilAbierto) setModalConfigPagoMovilAbierto(false);
         else if (modalTicketAbierto) setModalTicketAbierto(false);
         else if (modalCobroAbierto) setModalCobroAbierto(false);
@@ -2129,7 +2111,7 @@ export default function POSPage() {
                           {copiadoDatosPagoMovil ? "✓ ¡Copiado!" : "📋 Copiar Todo"}
                         </button>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-2 text-xs sm:text-sm">
                         {datosPagoMovil.map((d) => (
                           <div key={d.campo} className="flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white min-w-0">
                             <div className="min-w-0">
@@ -2432,29 +2414,6 @@ export default function POSPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Visor de Comprobante a pantalla completa */}
-      {modalComprobanteAbierto && pagoMovilActivo?.imagenComprobante && (
-        <div
-          className="fixed inset-0 z-[60] bg-slate-900/90 flex items-center justify-center p-4"
-          onClick={() => setModalComprobanteAbierto(false)}
-        >
-          <button
-            type="button"
-            onClick={() => setModalComprobanteAbierto(false)}
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element -- imagen Base64 generada por el cliente, incompatible con next/image */}
-          <img
-            src={pagoMovilActivo.imagenComprobante}
-            alt="Comprobante de pago"
-            onClick={(e) => e.stopPropagation()}
-            className="max-w-full max-h-full rounded-2xl shadow-2xl object-contain"
-          />
         </div>
       )}
 
