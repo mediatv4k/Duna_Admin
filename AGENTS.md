@@ -61,10 +61,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 #   campos N° de referencia + banco emisor, editables a mano. Un listener en tiempo
 #   real (escucharDocumento) autocompleta esos campos una sola vez cuando el cliente
 #   reporta. El CLIENTE (/pago/[token]) ve los datos receptores en grid 2x2 con "Copiar
-#   Todo" (viajan dentro del propio pago) y pulsa "Reportar Pago" (status REPORTADO).
+#   Todo" (una línea por dato: Banco, Teléfono, Cédula / RIF, Monto Exacto) y copia
+#   individual por campo; los datos viajan dentro del propio pago. Pulsa "Reportar Pago" (status REPORTADO).
 #   PROHIBIDO subir capturas/comprobantes: se valida solo por referencia + banco emisor.
-#   PROHIBIDO: botones de WhatsApp en la caja y subir capturas/comprobantes; el pago se
-#   valida solo por referencia + banco emisor.
 # - Motor transaccional Adonis (NO alterar sin orden expresa): catálogo desde
 #   GET /products/store/47 + stock real con Promise.allSettled a /product/{id}/web;
 #   cobro POST multipart a /delivery/request/purchase/web (service "PICKUP");
