@@ -330,8 +330,9 @@ export default function POSPage() {
   const [configPagoMovil, setConfigPagoMovil] = useState(CONFIG_PAGOMOVIL_DEFECTO);
   const [modalConfigPagoMovilAbierto, setModalConfigPagoMovilAbierto] = useState(false);
   const [formConfigPagoMovil, setFormConfigPagoMovil] = useState(CONFIG_PAGOMOVIL_DEFECTO);
-  const [copiadoDatosPagoMovil, setCopiadoDatosPagoMovil] = useState(false);
-  const [campoCopiadoPM, setCampoCopiadoPM] = useState("");
+  const [copiadoLinkPago, setCopiadoLinkPago] = useState(false);
+  const [pagoMovilActivo, setPagoMovilActivo] = useState(null);
+  const [tokenPagoActivo, setTokenPagoActivo] = useState(null);
 
 
   const [draftDetectado, setDraftDetectado] = useState(null);
@@ -804,36 +805,50 @@ export default function POSPage() {
     formVenta.referencia.trim().length > 0 &&
     referenciasUsadas.has(formVenta.referencia.trim());
 
-  // Datos de cobro por Pago Móvil (banco receptor configurado en la caja)
-  const bancoReceptorSeleccionado = bancosVenezuela.find(b => b.codigo === formVenta.bancoReceptor) || null;
+  // Monto a cobrar por Pago Móvil (los datos bancarios los ve el cliente en su enlace público)
   const montoPagoMovilUsd = formVenta.condicionVenta === "CONTADO" ? totalFacturaUsd : montoAbonadoUsd;
-  const datosPagoMovil = [
-    { campo: "banco", etiqueta: "Banco", valor: bancoReceptorSeleccionado ? bancoReceptorSeleccionado.display : "Sin configurar" },
-    { campo: "tel", etiqueta: "Teléfono", valor: configPagoMovil.telefonoReceptor || "Sin configurar" },
-    { campo: "rif", etiqueta: "Cédula / RIF", valor: configPagoMovil.rifReceptor || "Sin configurar" },
-    { campo: "monto", etiqueta: "Monto", valor: `Bs. ${formatearBs(montoPagoMovilUsd, tasaBcv)}` },
-  ];
 
-  const handleCopiarDatosPagoMovil = async () => {
-    const [banco, tel, rif, monto] = datosPagoMovil.map(d => d.valor);
+  // Crea la intención de pago con token y copia el enlace público (/pago/[token]) al portapapeles
+  const handleCopiarLinkPagoMovil = async () => {
+    const token = generarTokenPago();
+    const nuevaIntencion = {
+      id: token,
+      token,
+      fechaCreacion: new Date().toLocaleString("es-VE"),
+      clienteNombre: formVenta.cliente,
+      clienteTelefono: `${formVenta.paisCodigo}${limpiarTelefono(formVenta.telefono)}`,
+      montoUsd: montoPagoMovilUsd,
+      montoBs: montoPagoMovilUsd * tasaBcv,
+      datosCobro: configPagoMovil,
+      renglones: renglonesVenta,
+      status: "PENDIENTE",
+      referenciaReportada: "",
+    };
+    guardarDocumento("duna_pagos_pendientes", token, nuevaIntencion).catch((e) => console.error(e));
+    setTokenPagoActivo(token);
     try {
-      await navigator.clipboard.writeText(`Banco: ${banco} | Tel: ${tel} | RIF: ${rif} | Monto: ${monto}`);
-      setCopiadoDatosPagoMovil(true);
-      setTimeout(() => setCopiadoDatosPagoMovil(false), 1500);
+      await navigator.clipboard.writeText(`${obtenerOrigen()}/pago/${token}`);
+      setCopiadoLinkPago(true);
+      setTimeout(() => setCopiadoLinkPago(false), 1500);
     } catch (e) {
-      alert("No se pudo copiar automáticamente.");
+      alert("No se pudo copiar el enlace automáticamente.");
     }
   };
 
-  const handleCopiarCampoPagoMovil = async (valor, campo) => {
-    try {
-      await navigator.clipboard.writeText(String(valor));
-      setCampoCopiadoPM(campo);
-      setTimeout(() => setCampoCopiadoPM(""), 1500);
-    } catch (e) {
-      alert("No se pudo copiar automáticamente.");
-    }
-  };
+  // Escucha reactiva (Firestore en vivo, o polling local): detecta si el cliente ya reportó su pago
+  useEffect(() => {
+    if (!tokenPagoActivo) return undefined;
+    return escucharDocumento("duna_pagos_pendientes", tokenPagoActivo, (pago) => {
+      setPagoMovilActivo(pago);
+      if (pago && pago.status === "REPORTADO") {
+        setFormVenta(prev => ({
+          ...prev,
+          referencia: pago.referenciaReportada || prev.referencia,
+          bancoEmisor: pago.bancoEmisorReportado || prev.bancoEmisor,
+        }));
+      }
+    }, 2000);
+  }, [tokenPagoActivo]);
 
   // Genera el QR (data URL) apuntando al portal móvil del supervisor cada vez que hay un token nuevo pendiente
   useEffect(() => {
@@ -1033,6 +1048,8 @@ export default function POSPage() {
     setModalCobroAbierto(false);
     setModalAutorizacionAbierto(false);
     setAutorizacionActual(null);
+    setTokenPagoActivo(null);
+    setPagoMovilActivo(null);
     setAutorizacionCredito(null);
     setQrDataUrl("");
     setFormVenta({ ...FORM_VENTA_INICIAL, bancoReceptor: configPagoMovil.bancoReceptor || "" });
@@ -1148,6 +1165,8 @@ export default function POSPage() {
     setModalCobroAbierto(false);
     setModalAutorizacionAbierto(false);
     setAutorizacionActual(null);
+    setTokenPagoActivo(null);
+    setPagoMovilActivo(null);
     setAutorizacionCredito(null);
     setQrDataUrl("");
     setFormVenta({ ...FORM_VENTA_INICIAL, bancoReceptor: configPagoMovil.bancoReceptor || "" });
@@ -1220,6 +1239,8 @@ export default function POSPage() {
     setModalCobroAbierto(false);
     setModalAutorizacionAbierto(false);
     setAutorizacionActual(null);
+    setTokenPagoActivo(null);
+    setPagoMovilActivo(null);
     setAutorizacionCredito(null);
     setQrDataUrl("");
     setFormVenta({ ...FORM_VENTA_INICIAL, bancoReceptor: configPagoMovil.bancoReceptor || "" });
@@ -1939,7 +1960,7 @@ export default function POSPage() {
       {/* Modal de Cobro / Medios de Pago */}
       {modalCobroAbierto && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-3 sm:space-y-5 max-h-[95vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-3 sm:space-y-5 h-auto overflow-hidden">
 
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
@@ -2093,44 +2114,29 @@ export default function POSPage() {
                   )}
                   {formVenta.metodoPago === "Pago Móvil" && (
                     <div className="space-y-2">
-                      <div className="rounded-xl border border-orange-200 bg-orange-50/40 px-3 py-2 flex items-center justify-between gap-2">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Total a Pagar</span>
-                        <span className="text-right">
-                          <span className="text-xl font-black font-mono text-slate-900">Bs. {formatearBs(montoPagoMovilUsd, tasaBcv)}</span>
+                        <span>
+                          <span className="text-lg font-black font-mono text-slate-900">Bs. {formatearBs(montoPagoMovilUsd, tasaBcv)}</span>
                           <span className="text-[11px] font-mono text-slate-400 ml-2">≈ ${montoPagoMovilUsd.toFixed(2)}</span>
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between gap-2">
-                        <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-500">Datos para tu Pago Móvil</h4>
-                        <button
-                          type="button"
-                          onClick={handleCopiarDatosPagoMovil}
-                          className="shrink-0 px-2.5 py-1 rounded-full bg-orange-50 hover:bg-[#FE6712] text-[#FE6712] hover:text-white border border-orange-200 text-[10px] font-black transition whitespace-nowrap"
-                        >
-                          {copiadoDatosPagoMovil ? "✓ ¡Copiado!" : "📋 Copiar Todo"}
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs sm:text-sm">
-                        {datosPagoMovil.map((d) => (
-                          <div key={d.campo} className="flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white min-w-0">
-                            <div className="min-w-0">
-                              <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400 block">{d.etiqueta}</span>
-                              <span className="text-xs font-bold font-mono text-slate-900 truncate block">{d.valor}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleCopiarCampoPagoMovil(d.valor, d.campo)}
-                              title={`Copiar ${d.etiqueta}`}
-                              className="shrink-0 w-6 h-6 rounded-md bg-orange-50 hover:bg-[#FE6712] text-[#FE6712] hover:text-white flex items-center justify-center transition border border-orange-200"
-                            >
-                              {campoCopiadoPM === d.campo ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCopiarLinkPagoMovil}
+                        className="w-full h-9 px-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5"
+                      >
+                        {copiadoLinkPago ? "¡Enlace copiado!" : "🔗 Copiar Link de Pago"}
+                      </button>
+                      {pagoMovilActivo?.status === "REPORTADO" ? (
+                        <p className="text-[11px] font-bold text-emerald-700 text-center">
+                          ✓ El cliente reportó su pago · Ref. <span className="font-mono">{pagoMovilActivo.referenciaReportada || "—"}</span>
+                        </p>
+                      ) : tokenPagoActivo ? (
+                        <p className="text-[10px] text-slate-400 text-center">Esperando el reporte del cliente…</p>
+                      ) : null}
 
-                      <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-500 pt-1">Reporta tu pago</h4>
                       <div className="grid grid-cols-2 gap-2">
                         <input
                           type="text"

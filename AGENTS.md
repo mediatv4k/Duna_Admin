@@ -54,9 +54,14 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 #   +58 4120000000 y "Retiro en tienda física" y NO se registra en el directorio.
 #   Solo para ventas sin factura a nombre del cliente; si el cliente solicita sus
 #   datos fiscales, se registran los reales.
-# - Pago Móvil del cliente (src/app/pago/[token]/page.jsx): pantalla compacta de
-#   un solo viewport, con botón "Copiar Todo", cuadrícula 2x2 de datos y reporte de
-#   pago en una fila (referencia + banco emisor); captura opcional.
+# - Pago Móvil, roles separados: el CAJERO (modal de cobro) NO ve datos bancarios; solo
+#   Total a pagar, botón "Copiar Link de Pago" (crea el token en duna_pagos_pendientes y
+#   copia /pago/[token]) y reporte en una fila (N° de referencia + banco emisor). El
+#   modal no tiene scroll (h-auto overflow-hidden). El CLIENTE (/pago/[token]) ve los
+#   datos receptores en grid 2x2 con "Copiar Todo" (Banco | Tel | RIF | Monto), que
+#   viajan dentro del propio pago, y reporta referencia + banco emisor.
+#   PROHIBIDO: botones de WhatsApp en la caja y subir capturas/comprobantes; el pago se
+#   valida solo por referencia + banco emisor.
 # - Motor transaccional Adonis (NO alterar sin orden expresa): catálogo desde
 #   GET /products/store/47 + stock real con Promise.allSettled a /product/{id}/web;
 #   cobro POST multipart a /delivery/request/purchase/web (service "PICKUP");
