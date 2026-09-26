@@ -6,7 +6,8 @@ import {
   Boxes, Upload, Download, ArrowLeft, Search,
   Plus, Edit3, Trash2, X, Check, Camera,
   Snowflake, IceCream2, Cpu, Pill, Scale, Layers as LayersIcon,
-  Cloud, FileJson, RefreshCw, Loader2, LogOut
+  Cloud, FileJson, RefreshCw, Loader2, LogOut,
+  Store, ChevronDown
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useBusinessProfile } from "@/context/BusinessProfileContext";
@@ -23,7 +24,7 @@ const NICHOS = [
 const IMAGEN_DEFECTO = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&q=80";
 
 const ADONIS_BASE = "https://dev.carjos-marketplace.cloud";
-const ADONIS_API_KEY = "bf8f1b64-6342-48c5-af05-501e4c15a6cb";
+const ADONIS_API_KEY = process.env.NEXT_PUBLIC_SERVER_API_KEY || "bf8f1b64-6342-48c5-af05-501e4c15a6cb";
 
 function encabezadosComercio(token) {
   return {
@@ -61,6 +62,48 @@ async function actualizarProductoComercio(adonisId, cambios, token) {
     method: "PUT",
     body: JSON.stringify({ id: adonisId, ...cambios }),
   });
+}
+
+// GET /store (solo apiKey): lista de comercios para el selector Master. La forma exacta de la respuesta no está
+// garantizada, así que se busca el arreglo en las envolturas habituales, se soporta paginación si viene
+// meta.last_page, y de cada comercio solo se mapea id (o _id) y nombre (name o nombre).
+async function cargarTiendasComercio(signal) {
+  const pedirPagina = async (pagina) => {
+    const res = await fetch(`${ADONIS_BASE}/store${pagina > 1 ? `?page=${pagina}` : ""}`, {
+      headers: { apiKey: ADONIS_API_KEY },
+      signal,
+    });
+    let datos = null;
+    try {
+      datos = await res.json();
+    } catch (e) {
+      datos = null;
+    }
+    if (!res.ok || !datos || (datos.code !== undefined && datos.code !== 1)) {
+      const mensaje = typeof datos?.message === "object" ? JSON.stringify(datos.message) : datos?.message;
+      throw new Error(mensaje || `Adonis respondió HTTP ${res.status} al listar las tiendas.`);
+    }
+    return datos;
+  };
+  const extraerLista = (datos) =>
+    [datos, datos.data, datos.data?.stores, datos.data?.data, datos.stores, datos.data?.rows].find(Array.isArray) || [];
+  const ultimaPagina = (datos) =>
+    Number(datos.meta?.last_page ?? datos.data?.meta?.last_page ?? datos.data?.last_page ?? datos.last_page) || 1;
+
+  const primera = await pedirPagina(1);
+  let lista = extraerLista(primera);
+  for (let p = 2; p <= ultimaPagina(primera); p++) {
+    lista = lista.concat(extraerLista(await pedirPagina(p)));
+  }
+
+  const vistos = new Set();
+  return lista
+    .map((t) => {
+      const id = t?.id ?? t?._id;
+      return { id, nombre: String(t?.name ?? t?.nombre ?? (id != null ? `Tienda #${id}` : "")).trim() };
+    })
+    .filter((t) => t.id != null && t.nombre && !vistos.has(String(t.id)) && vistos.add(String(t.id)))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
 }
 
 // Precio V2 preservando lo que ya trajo Adonis (promoPrice y cualquier otra clave de metadata.price): solo se
@@ -348,7 +391,7 @@ function tieneAlgunCampoFarmacia(campos) {
 // esta última rompía por el límite de longitud de esa columna). Solo vive en localStorage (ver
 // guardarFichasFarmaciaLocalMasivo). Devuelve true/false en vez de lanzar: ningún rechazo individual
 // de Adonis debe interrumpir el lote ni la interfaz.
-async function sincronizarMetadataFarmacia(producto, camposFarmacia, token, esPrimero) {
+async function sincronizarMetadataFarmacia(producto, camposFarmacia, token, esPrimero, extraPayload = {}) {
   // Este PUT no cambia ningún dato del producto: la metadata que trajo Adonis manda sobre lo reconstruido, así
   // no se pierden weight/volume/comandaDisplay/variants (columnas del Excel v2) ni se trunca ni se vacía nada.
   // Lo reconstruido solo rellena las claves que Adonis no devolvió.
@@ -364,6 +407,7 @@ async function sincronizarMetadataFarmacia(producto, camposFarmacia, token, esPr
     image: producto.image,
     internal_category: producto.subcategoria || "",
     description: producto.descripcion || "",
+    ...extraPayload,
     metadata: {
       barcode: producto.barcode || "",
       subcategoria: producto.subcategoria || "",
@@ -473,6 +517,141 @@ function buildMarketplaceProductPayload(producto) {
   };
 }
 
+// Selector Master de tiendas: combobox desplegable anclado a su botón (sin overlay ni modal) con búsqueda rápida
+// cuando hay muchas tiendas. Teclado: flechas para moverse, Enter para elegir, Esc para cerrar.
+const quitarAcentos = (texto) => String(texto || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+function SelectorTienda({ tiendas, activaId, nombreActivo, cargandoLista, errorLista, onReintentar, onSeleccionar, deshabilitado }) {
+  const [abierto, setAbierto] = useState(false);
+  const [filtro, setFiltro] = useState("");
+  const [resaltado, setResaltado] = useState(0);
+  const contenedorRef = useRef(null);
+  const botonRef = useRef(null);
+
+  useEffect(() => {
+    if (!abierto) return undefined;
+    const alPresionar = (e) => {
+      if (contenedorRef.current && !contenedorRef.current.contains(e.target)) setAbierto(false);
+    };
+    document.addEventListener("mousedown", alPresionar);
+    return () => document.removeEventListener("mousedown", alPresionar);
+  }, [abierto]);
+
+  const conBusqueda = tiendas.length > 8;
+  const q = quitarAcentos(filtro.trim());
+  const visibles = q
+    ? tiendas.filter((t) => quitarAcentos(t.nombre).includes(q) || String(t.id).includes(q))
+    : tiendas;
+  const indice = Math.min(resaltado, Math.max(visibles.length - 1, 0));
+
+  const cerrar = () => {
+    setAbierto(false);
+    botonRef.current?.focus();
+  };
+  const elegir = (tienda) => {
+    setAbierto(false);
+    onSeleccionar(tienda.id);
+  };
+  const alTeclear = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cerrar();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setResaltado(Math.min(indice + 1, visibles.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setResaltado(Math.max(indice - 1, 0));
+    } else if (e.key === "Enter" && visibles[indice]) {
+      e.preventDefault();
+      elegir(visibles[indice]);
+    }
+  };
+
+  return (
+    <div ref={contenedorRef} className="relative">
+      <button
+        ref={botonRef}
+        type="button"
+        disabled={deshabilitado}
+        onClick={() => {
+          setFiltro("");
+          setResaltado(0);
+          setAbierto((a) => !a);
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={abierto}
+        title={deshabilitado ? "Espera a que termine la operación en curso para cambiar de tienda" : "Cambiar de tienda"}
+        className="flex items-center gap-1.5 max-w-[240px] px-2 py-0.5 rounded-lg border border-slate-200 bg-white hover:border-[#FE6712] text-[11px] font-bold text-slate-600 transition disabled:opacity-60 disabled:hover:border-slate-200"
+      >
+        <Store className="w-3 h-3 shrink-0 text-[#FE6712]" />
+        <span className="truncate">{nombreActivo}</span>
+        <span className="text-slate-400 font-medium shrink-0">#{activaId}</span>
+        <ChevronDown className="w-3 h-3 shrink-0 text-slate-400" />
+      </button>
+
+      {abierto && (
+        <div className="absolute left-0 top-full mt-1 z-50 w-72 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden" onKeyDown={alTeclear}>
+          {conBusqueda && (
+            <div className="p-2 border-b border-slate-100">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400" />
+                <input
+                  autoFocus
+                  type="text"
+                  value={filtro}
+                  onChange={(e) => {
+                    setFiltro(e.target.value);
+                    setResaltado(0);
+                  }}
+                  placeholder="Buscar tienda por nombre o #id..."
+                  aria-label="Buscar tienda"
+                  className="w-full pl-8 pr-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
+                />
+              </div>
+            </div>
+          )}
+          <div role="listbox" tabIndex={conBusqueda ? -1 : 0} ref={(el) => { if (el && !conBusqueda) el.focus(); }} className="max-h-64 overflow-y-auto py-1 focus:outline-none">
+            {cargandoLista && (
+              <p className="px-3 py-3 text-xs text-slate-400 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando tiendas...</p>
+            )}
+            {!cargandoLista && errorLista && (
+              <div className="px-3 py-3 text-xs">
+                <p className="font-bold text-rose-700">No se pudo cargar la lista de tiendas.</p>
+                <p className="text-slate-500 mt-0.5 break-words">{errorLista}</p>
+                <button type="button" onClick={onReintentar} className="mt-2 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-bold text-slate-600">Reintentar</button>
+              </div>
+            )}
+            {!cargandoLista && !errorLista && visibles.length === 0 && (
+              <p className="px-3 py-3 text-xs text-slate-400">Sin tiendas que coincidan.</p>
+            )}
+            {visibles.map((t, i) => {
+              const activa = String(t.id) === String(activaId);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="option"
+                  aria-selected={activa}
+                  onClick={() => elegir(t)}
+                  onMouseEnter={() => setResaltado(i)}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left text-xs transition ${i === indice ? "bg-orange-50" : "bg-white"} ${activa ? "font-black text-[#FE6712]" : "font-medium text-slate-700"}`}
+                >
+                  <span className="truncate">{t.nombre}</span>
+                  <span className="shrink-0 flex items-center gap-1 text-[10px] text-slate-400">
+                    #{t.id}
+                    {activa && <Check className="w-3 h-3 text-[#FE6712]" />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Celda numérica editable en línea: guarda con Enter o al perder el foco, solo si el valor es válido
 // y cambió. Escape cancela. Sin efectos: el borrador vive únicamente mientras la celda tiene el foco.
 function CeldaEditable({ valor, onGuardar, prefijo = "", entero = false, deshabilitado = false, etiqueta, claseTexto = "text-slate-900" }) {
@@ -550,7 +729,24 @@ export default function ComerciosProductosPage() {
     setVerificandoSesion(false);
   }, [router]);
 
-  const storeId = comercio?.entityId || comercio?.storeId || comercio?.store?.id || comercio?.comercio_id || comercio?.id || null;
+  // Modo Master: el selector de la cabecera cambia la tienda activa sin cerrar sesión ni tocar localStorage.
+  // Por defecto se usa la tienda de la sesión; "storeId" (la activa) alimenta el resto del componente.
+  const storeIdSesion = comercio?.entityId || comercio?.storeId || comercio?.store?.id || comercio?.comercio_id || comercio?.id || null;
+  const [storeIdActivo, setStoreIdActivo] = useState(null);
+  const storeId = storeIdActivo ?? storeIdSesion;
+  const esModoMaster = storeIdSesion != null && storeId != null && String(storeId) !== String(storeIdSesion);
+  // En Modo Master las escrituras (PUT /product/:id, POST /product) viajan con el storeId elegido; con la tienda
+  // de la sesión el payload queda exactamente igual que antes.
+  const payloadTienda = esModoMaster ? { storeId } : {};
+  const [tiendas, setTiendas] = useState([]);
+  const [cargandoTiendas, setCargandoTiendas] = useState(true);
+  const [errorTiendas, setErrorTiendas] = useState("");
+  const [recargaTiendas, setRecargaTiendas] = useState(0);
+  const [importando, setImportando] = useState(false);
+  const nombreSesion = comercio?.name || comercio?.nombre || "";
+  const nombreActivo = tiendas.find((t) => String(t.id) === String(storeId))?.nombre
+    || (!esModoMaster && nombreSesion)
+    || `Tienda #${storeId}`;
 
   const handleCerrarSesion = () => {
     cerrarSesionComercio();
@@ -604,6 +800,56 @@ export default function ComerciosProductosPage() {
     return () => controller.abort();
   }, [token, storeId, recarga]);
 
+  // Lista de tiendas para el selector Master (GET /store, solo apiKey); se pide una vez al abrir el portal
+  useEffect(() => {
+    if (!token) return undefined;
+    const controller = new AbortController();
+    cargarTiendasComercio(controller.signal)
+      .then((lista) => {
+        if (controller.signal.aborted) return;
+        setTiendas(lista);
+        setErrorTiendas("");
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        console.error(err);
+        setErrorTiendas(err.message || "Error desconocido al listar las tiendas.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCargandoTiendas(false);
+      });
+    return () => controller.abort();
+  }, [token, recargaTiendas]);
+
+  const handleReintentarTiendas = () => {
+    setErrorTiendas("");
+    setCargandoTiendas(true);
+    setRecargaTiendas((n) => n + 1);
+  };
+
+  // Cambio de tienda: fija el storeId activo (el efecto del catálogo se dispara solo por su dependencia y aborta
+  // la petición anterior) y deja limpio todo lo que pertenecía a la tienda previa: catálogo, tasa, filtros,
+  // avisos, filas en edición y los paneles/formularios abiertos.
+  const handleCambiarTienda = (id) => {
+    if (String(id) === String(storeId)) return;
+    Object.values(temporizadoresFilas.current).forEach(clearTimeout);
+    temporizadoresFilas.current = {};
+    setStoreIdActivo(id);
+    setProductos([]);
+    setTasaAdonis(0);
+    setBusqueda("");
+    setFiltroCategoria("TODAS");
+    setError("");
+    setErrorEdicionRapida("");
+    setReporteImportacion(null);
+    setEstadoFilas({});
+    setModalAbierto(false);
+    setProductoEnEdicion(null);
+    setModalJsonAbierto(false);
+    setProductoJsonActual(null);
+    setCargando(true);
+  };
+
   // Altas/ediciones ya persisten directamente en Adonis (ver handleGuardarProducto); esto solo
   // sincroniza el estado local, por ejemplo tras una importación de Excel.
   const actualizarProductos = (nuevos) => {
@@ -627,6 +873,7 @@ export default function ComerciosProductosPage() {
 
     setReporteImportacion(null);
     setCargando(true);
+    setImportando(true);
     try {
       const respuesta = await subirExcelBatchComercio(storeId, file, token, borrarNoIncluidos, { dryRun: simular });
       const errores = normalizarErroresBatch(respuesta?.errors ?? respuesta?.data?.errors);
@@ -672,7 +919,7 @@ export default function ComerciosProductosPage() {
       for (const [codigo, camposFarmacia] of entradasFarmacia) {
         const producto = porCodigo.get(codigo);
         if (!producto || !producto.adonisId) continue;
-        const ok = await sincronizarMetadataFarmacia(producto, camposFarmacia, token, sincronizados === 0);
+        const ok = await sincronizarMetadataFarmacia(producto, camposFarmacia, token, sincronizados === 0, payloadTienda);
         if (ok) sincronizados++;
       }
 
@@ -705,6 +952,7 @@ export default function ComerciosProductosPage() {
       setReporteImportacion({ tipo: "error", archivo: file.name, mensaje: err.message || "Error al subir el archivo Excel.", errores: err.errores || [] });
     } finally {
       setCargando(false);
+      setImportando(false);
       if (fileInputRef.current) fileInputRef.current.value = null;
     }
   };
@@ -983,7 +1231,7 @@ export default function ComerciosProductosPage() {
     if (Number(formData.promoPrice)) metadata.price.promoPrice = Number(formData.promoPrice);
     else if (metadata.price.promoPrice === undefined) metadata.price.promoPrice = 0;
 
-    const payload = { ...raiz, metadata };
+    const payload = { ...raiz, metadata, ...payloadTienda };
     // El backend exige la subcategoría bajo esta clave en snake_case en la raíz del payload
     payload.internal_category = formData.subcategoria || formData.subcategory || formData.internal_category || "";
     // INYECCIÓN CRÍTICA: al editar, viaja el id real de Adonis en el payload para que el backend lo trate como actualización
@@ -1020,7 +1268,7 @@ export default function ComerciosProductosPage() {
     try {
       await pedirJsonComercio(`${ADONIS_BASE}/product/${producto.adonisId}`, token, {
         method: "PUT",
-        body: JSON.stringify({ id: producto.adonisId, status: "INACTIVE" }),
+        body: JSON.stringify({ id: producto.adonisId, status: "INACTIVE", ...payloadTienda }),
       });
       // Quita la fila de inmediato del estado local: no espera a un refetch por si Adonis
       // sigue devolviendo productos INACTIVE en /products/all
@@ -1058,7 +1306,7 @@ export default function ComerciosProductosPage() {
     setProductos((prev) => prev.map((p) => (p.id === producto.id ? { ...p, ...cambiosLocales } : p)));
     marcarFila(producto.id, "guardando");
     try {
-      await actualizarProductoComercio(producto.adonisId, cambiosPayload, token);
+      await actualizarProductoComercio(producto.adonisId, { ...cambiosPayload, ...payloadTienda }, token);
       marcarFila(producto.id, "ok");
     } catch (err) {
       setProductos((prev) => prev.map((p) => (p.id === producto.id ? { ...p, ...previo } : p)));
@@ -1141,9 +1389,16 @@ export default function ComerciosProductosPage() {
                 <span className="text-sm font-black text-slate-900">Portal de Aliados Comerciales</span>
                 <span className="text-[11px] bg-orange-50 text-[#FE6712] px-2.5 py-0.5 rounded-full font-bold border border-orange-200">PRODUCTOS</span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium">
-                {comercio?.name || comercio?.nombre || "Comercio"} · Tienda #{storeId}
-              </p>
+              <SelectorTienda
+                tiendas={tiendas}
+                activaId={storeId}
+                nombreActivo={nombreActivo}
+                cargandoLista={cargandoTiendas}
+                errorLista={errorTiendas}
+                onReintentar={handleReintentarTiendas}
+                onSeleccionar={handleCambiarTienda}
+                deshabilitado={importando || guardando}
+              />
             </div>
           </div>
 
@@ -1223,6 +1478,18 @@ export default function ComerciosProductosPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 flex-1 w-full space-y-6">
+        <div className="flex flex-wrap items-center gap-2" aria-live="polite">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-orange-200 bg-orange-50 text-[11px] font-bold text-[#FE6712]">
+            <Store className="w-3.5 h-3.5" />
+            Tienda activa: {nombreActivo} <span className="font-medium text-orange-400">#{storeId}</span>
+          </span>
+          {esModoMaster && (
+            <span className="px-2.5 py-1 rounded-full bg-[#FE6712] text-white text-[10px] font-black tracking-wide" title="Estás operando sobre una tienda distinta a la de tu sesión">
+              MODO MASTER
+            </span>
+          )}
+        </div>
+
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
           <div className="relative w-full sm:w-80">
             <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
