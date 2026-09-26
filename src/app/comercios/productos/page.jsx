@@ -54,6 +54,15 @@ async function pedirJsonComercio(url, token, opciones = {}) {
   return datos;
 }
 
+// PUT /product/:id con el token del comercio (iac_store). Envía solo el id y los campos que cambian
+// (misma convención que la baja lógica); lo usa la edición rápida en la tabla.
+async function actualizarProductoComercio(adonisId, cambios, token) {
+  return pedirJsonComercio(`${ADONIS_BASE}/product/${adonisId}`, token, {
+    method: "PUT",
+    body: JSON.stringify({ id: adonisId, ...cambios }),
+  });
+}
+
 // GET /store/:storeId/products/all: el arreglo plano vive en data.products.data,
 // y la metadata de paginación en data.products.meta (misma convención que last_page del catálogo público).
 async function cargarCatalogoComercio(storeId, token, signal) {
@@ -173,6 +182,9 @@ function mapearProductoComercio(item, idx, storeId) {
     toppings: meta.toppings || [],
     unidadMedida: meta.unidadMedida || "kg",
     origen: "ADONIS_COMERCIO",
+    // metadata tal cual la devolvió Adonis: la edición rápida de precio la reenvía completa (solo cambia
+    // price) para no perder weight/volume/comandaDisplay/variants ni un promoPrice ya existente
+    metadataCrudo: meta,
   };
 }
 
@@ -445,6 +457,60 @@ function buildMarketplaceProductPayload(producto) {
   };
 }
 
+// Celda numérica editable en línea: guarda con Enter o al perder el foco, solo si el valor es válido
+// y cambió. Escape cancela. Sin efectos: el borrador vive únicamente mientras la celda tiene el foco.
+function CeldaEditable({ valor, onGuardar, prefijo = "", entero = false, deshabilitado = false, etiqueta, claseTexto = "text-slate-900" }) {
+  const [borrador, setBorrador] = useState(null);
+  const cancelado = useRef(false);
+  const numeroActual = Number(valor) || 0;
+  const mostrado = borrador ?? (entero ? String(numeroActual) : numeroActual.toFixed(2));
+
+  const confirmar = () => {
+    if (cancelado.current) {
+      cancelado.current = false;
+      setBorrador(null);
+      return;
+    }
+    if (borrador === null) return;
+    const numero = Number(String(borrador).trim().replace(",", "."));
+    setBorrador(null);
+    if (borrador.trim() === "" || !Number.isFinite(numero) || numero < 0) return;
+    const nuevo = entero ? Math.trunc(numero) : Math.round(numero * 100) / 100;
+    if (nuevo === numeroActual) return;
+    onGuardar(nuevo);
+  };
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {prefijo && <span className={`text-xs font-black ${claseTexto}`}>{prefijo}</span>}
+      <input
+        type="text"
+        inputMode={entero ? "numeric" : "decimal"}
+        value={mostrado}
+        disabled={deshabilitado}
+        aria-label={etiqueta}
+        title="Enter o clic fuera para guardar · Esc para cancelar"
+        onFocus={(e) => {
+          // El borrador arranca con el mismo texto que ya se ve ("10.00"): si cambiara, React reescribiría
+          // el valor del input y se perdería la selección, y lo que se teclea se añadiría al final.
+          setBorrador(mostrado);
+          e.target.select();
+        }}
+        onChange={(e) => setBorrador(e.target.value)}
+        onBlur={confirmar}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            cancelado.current = true;
+            e.currentTarget.blur();
+          }
+        }}
+        className={`${entero ? "w-16" : "w-20"} px-2 py-1 rounded-lg border border-transparent hover:border-slate-200 focus:border-[#FE6712] focus:outline-none bg-transparent focus:bg-white text-xs font-black disabled:opacity-60 ${claseTexto}`}
+      />
+    </div>
+  );
+}
+
 export default function ComerciosProductosPage() {
   const router = useRouter();
   const { modoMoneda, tasaBcv } = useCurrency();
@@ -480,6 +546,9 @@ export default function ComerciosProductosPage() {
   const [borrarNoIncluidos, setBorrarNoIncluidos] = useState(false);
   const [simular, setSimular] = useState(false);
   const [reporteImportacion, setReporteImportacion] = useState(null);
+  const [estadoFilas, setEstadoFilas] = useState({});
+  const [errorEdicionRapida, setErrorEdicionRapida] = useState("");
+  const temporizadoresFilas = useRef({});
   const [filtroCategoria, setFiltroCategoria] = useState("TODAS");
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -942,6 +1011,66 @@ export default function ComerciosProductosPage() {
     }
   };
 
+  // Micro-indicador por fila: "guardando" (spinner), "ok" (check verde ~2 s) o "error" (queda hasta el próximo cambio)
+  const marcarFila = (id, fase, mensaje = "") => {
+    clearTimeout(temporizadoresFilas.current[id]);
+    setEstadoFilas((prev) => ({ ...prev, [id]: { fase, mensaje } }));
+    if (fase === "ok") {
+      temporizadoresFilas.current[id] = setTimeout(() => {
+        setEstadoFilas((prev) => {
+          const copia = { ...prev };
+          delete copia[id];
+          return copia;
+        });
+      }, 2000);
+    }
+  };
+
+  // Edición rápida en tabla: actualización optimista del estado local y PUT /product/:id solo con el id y
+  // los campos que cambian. Si Adonis rechaza, se revierte la fila y se avisa en la fila y en el banner.
+  const guardarCambioRapido = async (producto, cambiosLocales, cambiosPayload) => {
+    if (!token || !producto.adonisId) {
+      setErrorEdicionRapida("No se puede guardar: falta el identificador de Adonis para este producto.");
+      return;
+    }
+    const previo = {};
+    Object.keys(cambiosLocales).forEach((campo) => { previo[campo] = producto[campo]; });
+    setErrorEdicionRapida("");
+    setProductos((prev) => prev.map((p) => (p.id === producto.id ? { ...p, ...cambiosLocales } : p)));
+    marcarFila(producto.id, "guardando");
+    try {
+      await actualizarProductoComercio(producto.adonisId, cambiosPayload, token);
+      marcarFila(producto.id, "ok");
+    } catch (err) {
+      setProductos((prev) => prev.map((p) => (p.id === producto.id ? { ...p, ...previo } : p)));
+      const mensaje = err.message || "Adonis rechazó el cambio.";
+      marcarFila(producto.id, "error", mensaje);
+      setErrorEdicionRapida(`No se pudo guardar «${producto.name}»: ${mensaje}`);
+    }
+  };
+
+  const handleToggleEstado = (producto) => {
+    const nuevo = producto.status === "INACTIVE" ? "ACTIVE" : "INACTIVE";
+    guardarCambioRapido(producto, { status: nuevo }, { status: nuevo });
+  };
+
+  const handleEditarStock = (producto, nuevo) => {
+    guardarCambioRapido(producto, { stock: nuevo }, { stock: nuevo });
+  };
+
+  // El precio V2 vive en metadata.price.basePrice (la raíz es solo el respaldo V1): se reenvía la metadata
+  // completa que trajo Adonis cambiando únicamente price, para no perder el resto de sus claves.
+  const handleEditarPrecio = (producto, nuevo) => {
+    const metaPrevia = producto.metadataCrudo || {};
+    const precioPrevio = metaPrevia.price || {};
+    const precioMeta = { ...precioPrevio, basePrice: nuevo };
+    if (precioPrevio.infoPrice == null || Number(precioPrevio.infoPrice) === Number(precioPrevio.basePrice)) {
+      precioMeta.infoPrice = nuevo;
+    }
+    const metadata = { ...metaPrevia, price: precioMeta };
+    guardarCambioRapido(producto, { price: nuevo, metadataCrudo: metadata }, { price: nuevo, metadata });
+  };
+
   const categoriasDisponibles = [...new Set(productos.map(p => p.categoria).filter(Boolean))].sort();
 
   const productosFiltrados = productos.filter(p => {
@@ -1111,6 +1240,15 @@ export default function ComerciosProductosPage() {
           </div>
         )}
 
+        {errorEdicionRapida && (
+          <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
+            <span>{errorEdicionRapida}</span>
+            <button type="button" onClick={() => setErrorEdicionRapida("")} aria-label="Cerrar aviso" className="shrink-0 text-rose-500 hover:text-rose-700">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {reporteImportacion && (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200">
@@ -1242,8 +1380,11 @@ export default function ComerciosProductosPage() {
                       const precioReal = item?.metadata?.price?.basePrice ?? item?.price ?? 0;
                       const precio = Number(precioReal) || 0;
                       const agotado = estaAgotado(item);
+                      const inactivo = item.status === "INACTIVE";
+                      const fila = estadoFilas[item.id];
+                      const guardandoFila = fila?.fase === "guardando";
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50 transition">
+                        <tr key={item.id} className={`transition ${inactivo ? "bg-slate-50" : "hover:bg-slate-50"}`}>
                           <td className="p-4">
                             {/* eslint-disable-next-line @next/next/no-img-element -- imagen dinámica (Base64/URL arbitraria), incompatible con next/image sin configurar dominios */}
                             <img
@@ -1256,24 +1397,62 @@ export default function ComerciosProductosPage() {
                           <td className="p-4 font-bold text-slate-800 max-w-xs">{item.name}</td>
                           <td className="p-4 text-slate-500 font-medium">{item.code}</td>
                           <td className="p-4 text-slate-600">{item.categoria || "—"}</td>
-                          <td className="p-4 font-black text-slate-900">${precio.toFixed(2)}</td>
+                          <td className="p-4">
+                            <CeldaEditable
+                              valor={precio}
+                              prefijo="$"
+                              etiqueta={`Precio en dólares de ${item.name}`}
+                              deshabilitado={guardandoFila}
+                              onGuardar={(nuevo) => handleEditarPrecio(item, nuevo)}
+                            />
+                          </td>
                           <td className="p-4 text-slate-600 font-semibold">
                             {tasa > 0
                               ? `Bs. ${(precio * tasa).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                               : "—"}
                           </td>
-                          <td className="p-4 font-bold text-slate-700">{item.stock ?? "—"}</td>
                           <td className="p-4">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${
-                              agotado
-                                ? "bg-rose-50 text-rose-700 border-rose-200"
-                                : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            }`}>
-                              {agotado ? "Agotado" : "Disponible"}
-                            </span>
+                            <CeldaEditable
+                              valor={item.stock}
+                              entero
+                              claseTexto="text-slate-700"
+                              etiqueta={`Stock de ${item.name}`}
+                              deshabilitado={guardandoFila}
+                              onGuardar={(nuevo) => handleEditarStock(item, nuevo)}
+                            />
+                          </td>
+                          <td className="p-4">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={!inactivo}
+                                onClick={() => handleToggleEstado(item)}
+                                disabled={guardandoFila}
+                                title={inactivo ? "Inactivo: clic para activar" : "Activo: clic para desactivar"}
+                                aria-label={`${inactivo ? "Activar" : "Desactivar"} ${item.name}`}
+                                className={`w-8 h-5 shrink-0 rounded-full relative transition-colors disabled:opacity-60 ${inactivo ? "bg-slate-200" : "bg-[#FE6712]"}`}
+                              >
+                                <span className={`w-4 h-4 bg-white rounded-full shadow-sm absolute top-[2px] transition-all ${inactivo ? "left-[2px]" : "left-[14px]"}`} />
+                              </button>
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border whitespace-nowrap ${
+                                inactivo
+                                  ? "bg-slate-100 text-slate-500 border-slate-200"
+                                  : agotado
+                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              }`}>
+                                {inactivo ? "Inactivo" : agotado ? "Agotado" : "Disponible"}
+                              </span>
+                            </div>
                           </td>
                           <td className="p-4">
                             <div className="flex items-center justify-end gap-1.5">
+                              <span className="w-4 h-4 flex items-center justify-center shrink-0" role="status" aria-live="polite" title={fila?.fase === "error" ? fila.mensaje : undefined}>
+                                {fila?.fase === "guardando" && <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin" aria-label="Guardando" />}
+                                {fila?.fase === "ok" && <Check className="w-3.5 h-3.5 text-emerald-600" aria-label="Guardado" />}
+                                {fila?.fase === "error" && <X className="w-3.5 h-3.5 text-rose-600" aria-label="Error al guardar" />}
+                              </span>
                               <button onClick={() => abrirModalJson(item)} title="Ver JSON v2" className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition border border-slate-200">
                                 <FileJson className="w-3.5 h-3.5" />
                               </button>
@@ -1294,6 +1473,7 @@ export default function ComerciosProductosPage() {
             </div>
             <div className="p-4 border-t border-slate-100 text-xs text-slate-500">
               Mostrando <strong>{productosFiltrados.length}</strong> de <strong>{productos.length}</strong> productos
+              <span className="text-slate-400"> · Edita precio y stock directamente en la tabla: Enter o clic fuera para guardar, Esc para cancelar.</span>
             </div>
           </div>
         )}
