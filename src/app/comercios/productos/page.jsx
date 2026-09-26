@@ -172,7 +172,7 @@ function mapearProductoComercio(item, idx, storeId) {
     image: item.image || item.pictureUrl || IMAGEN_DEFECTO,
     status: item.status || "ACTIVE",
     outOfStock: Boolean(item.outOfStock),
-    descripcion: String(meta.descripcion || item.description || "").slice(0, 250),
+    descripcion: String(meta.descripcion || item.description || ""),
     nicho: meta.nicho || "General",
     principioActivo: fichaFarmacia?.principioActivo ?? leerCampoFlexible(item, meta, ["principio_activo", "PRINCIPIO_ACTIVO", "principioActivo"]) ?? "",
     concentracion: fichaFarmacia?.concentracion ?? leerCampoFlexible(item, meta, ["concentracion", "CONCENTRACION", "concentracionDosis"]) ?? "",
@@ -757,7 +757,7 @@ export default function ComerciosProductosPage() {
         CATEGORIA: "General",
         "Categoría Interna": "",
         NOMBRE: "Producto Ejemplo",
-        DESCRIPCION: "Descripción oficial de 250 caracteres",
+        DESCRIPCION: "Descripción oficial del producto",
         CANTIDAD: 20,
         MINIMO: 1,
         MAXIMO: 0,
@@ -954,7 +954,7 @@ export default function ComerciosProductosPage() {
       subcategoria: formData.subcategoria,
       marca: formData.marca,
       costo: Number(formData.costo) || 0,
-      descripcion: formData.descripcion.slice(0, 250),
+      descripcion: formData.descripcion,
       nicho: formData.nicho,
       principioActivo: formData.principioActivo,
       concentracion: formData.concentracion,
@@ -1612,9 +1612,9 @@ export default function ComerciosProductosPage() {
                 <div>
                   <div className="flex justify-between text-[11px] font-bold text-slate-600 mb-1">
                     <span>Descripción</span>
-                    <span className="text-slate-400">{formData.descripcion.length} / 250</span>
+                    <span className="text-slate-400">{formData.descripcion.length} caracteres</span>
                   </div>
-                  <textarea rows="2" maxLength={250} value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs resize-none"></textarea>
+                  <textarea rows="2" value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs resize-none"></textarea>
                 </div>
               )}
 
