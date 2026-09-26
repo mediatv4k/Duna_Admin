@@ -1008,60 +1008,72 @@ export default function ComerciosProductosPage() {
             <button
               onClick={handleSincronizarAdonis}
               disabled={cargando}
+              title="Sincronizar con Adonis"
+              aria-label="Sincronizar con Adonis"
               className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-60"
             >
               <RefreshCw className={`w-4 h-4 ${cargando ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">{cargando ? "Actualizando..." : "Sincronizar con Adonis"}</span>
+              <span className="sr-only">{cargando ? "Actualizando..." : "Sincronizar con Adonis"}</span>
             </button>
             <button
               onClick={abrirModalNuevo}
+              title="Nuevo Producto"
+              aria-label="Nuevo Producto"
               className="px-3.5 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Nuevo Producto</span>
+              <span className="hidden xl:inline whitespace-nowrap">Nuevo Producto</span>
             </button>
             <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-2xl border border-slate-200 cursor-pointer shadow-sm hover:bg-slate-50 transition" title="Si está activo, eliminará los productos que no estén en el Excel">
-              <div className={`w-8 h-5 rounded-full relative transition-colors ${borrarNoIncluidos ? 'bg-[#FE6712]' : 'bg-slate-200'}`}>
+              <div className={`w-8 h-5 shrink-0 rounded-full relative transition-colors ${borrarNoIncluidos ? 'bg-[#FE6712]' : 'bg-slate-200'}`}>
                 <div className={`w-4 h-4 bg-white rounded-full shadow-sm absolute top-[2px] transition-all ${borrarNoIncluidos ? 'left-[14px]' : 'left-[2px]'}`} />
               </div>
               <input type="checkbox" checked={borrarNoIncluidos} onChange={(e) => setBorrarNoIncluidos(e.target.checked)} className="hidden" />
-              <span className="text-xs font-bold text-slate-600 hidden lg:inline">Borrar no incluidos</span>
+              <span className="text-xs font-bold text-slate-600 hidden 2xl:inline whitespace-nowrap">Borrar no incluidos</span>
             </label>
             <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-2xl border border-slate-200 cursor-pointer shadow-sm hover:bg-slate-50 transition" title="Si está activo, el Excel solo se valida en el servidor y no se guarda ningún cambio">
-              <div className={`w-8 h-5 rounded-full relative transition-colors ${simular ? 'bg-[#FE6712]' : 'bg-slate-200'}`}>
+              <div className={`w-8 h-5 shrink-0 rounded-full relative transition-colors ${simular ? 'bg-[#FE6712]' : 'bg-slate-200'}`}>
                 <div className={`w-4 h-4 bg-white rounded-full shadow-sm absolute top-[2px] transition-all ${simular ? 'left-[14px]' : 'left-[2px]'}`} />
               </div>
               <input type="checkbox" checked={simular} onChange={(e) => setSimular(e.target.checked)} className="hidden" />
-              <span className="text-xs font-bold text-slate-600 hidden lg:inline">Simular (sin guardar)</span>
+              <span className="text-xs font-bold text-slate-600 hidden 2xl:inline whitespace-nowrap">Simular (sin guardar)</span>
             </label>
             <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
             <button
               onClick={() => fileInputRef.current?.click()}
+              title="Importar Excel"
+              aria-label="Importar Excel"
               className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-sm"
             >
               <Upload className="w-4 h-4 text-[#FE6712]" />
-              <span className="hidden md:inline">Importar Excel</span>
+              <span className="hidden xl:inline whitespace-nowrap">Importar Excel</span>
             </button>
             <button
               onClick={handleExportExcel}
+              title="Exportar Excel"
+              aria-label="Exportar Excel"
               className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-sm"
             >
               <Download className="w-4 h-4 text-slate-500" />
-              <span className="hidden md:inline">Exportar Excel</span>
+              <span className="sr-only">Exportar Excel</span>
             </button>
             <button
               onClick={handleExportMarketplace}
+              title="Exportar Marketplace (JSON v2)"
+              aria-label="Exportar Marketplace (JSON v2)"
               className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-sm"
             >
               <Cloud className="w-4 h-4 text-slate-500" />
-              <span className="hidden md:inline">Exportar Marketplace (JSON v2)</span>
+              <span className="sr-only">Exportar Marketplace (JSON v2)</span>
             </button>
             <button
               onClick={handleCerrarSesion}
+              title="Salir"
+              aria-label="Salir"
               className="px-3 py-2 bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-sm"
             >
               <LogOut className="w-4 h-4" />
-              <span className="hidden md:inline">Salir</span>
+              <span className="sr-only">Salir</span>
             </button>
           </div>
         </div>
