@@ -674,7 +674,9 @@ function SelectorTienda({ tiendas, activaId, nombreActivo, cargandoLista, errorL
       </button>
 
       {abierto && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-72 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden" onKeyDown={alTeclear}>
+        // max-w descuenta lo que el botón queda desplazado del borde izquierdo en móvil (~5.5rem: margen, botón de
+        // volver y separación), para que el desplegable, anclado a la izquierda del selector, no se salga por la derecha
+        <div className="absolute left-0 top-full mt-1 z-50 w-72 max-w-[calc(100vw-5.5rem)] bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden" onKeyDown={alTeclear}>
           {conBusqueda && (
             <div className="p-2 border-b border-slate-100">
               <div className="relative">
@@ -1586,9 +1588,11 @@ export default function ComerciosProductosPage() {
 
   return (
     <div className="min-h-screen bg-white text-slate-800 flex flex-col font-sans">
-      <header className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      {/* Móvil y tablet (< lg): el header crece en altura y sus controles se envuelven en filas; sin sticky para no
+          ocupar media pantalla. Desde lg vuelve a ser una sola fila de 64 px pegada arriba. */}
+      <header className="border-b border-slate-200 bg-white/95 backdrop-blur relative z-40 lg:sticky lg:top-0">
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-8 py-2 lg:py-0 min-h-16 lg:h-16 flex flex-wrap lg:flex-nowrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex items-center gap-3 min-w-0 max-w-full">
             <button
               type="button"
               onClick={handleCerrarSesion}
@@ -1597,8 +1601,8 @@ export default function ComerciosProductosPage() {
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2">
                 <span className="text-sm font-black text-slate-900">Portal de Aliados Comerciales</span>
                 <span className="text-[11px] bg-orange-50 text-[#FE6712] px-2.5 py-0.5 rounded-full font-bold border border-orange-200">PRODUCTOS</span>
               </div>
@@ -1615,7 +1619,7 @@ export default function ComerciosProductosPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 w-full lg:w-auto">
             <button
               onClick={handleSincronizarAdonis}
               disabled={cargando}
