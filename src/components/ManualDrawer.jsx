@@ -122,8 +122,8 @@ export default function ManualDrawer() {
   const sugeridas = moduloActual ? articulosFiltrados.filter((a) => a.modulo === moduloActual) : [];
   const resto = moduloActual ? articulosFiltrados.filter((a) => a.modulo !== moduloActual) : articulosFiltrados;
 
-  // Portal público de autoservicio / portal móvil del supervisor / pantalla de acceso: sin manual administrativo
-  if (pathname?.startsWith("/pago/") || pathname?.startsWith("/supervisor") || pathname === "/login") return null;
+  // Portal público de autoservicio / portal móvil del supervisor / pantalla de acceso / portal de comercios: sin manual administrativo
+  if (pathname?.startsWith("/pago/") || pathname?.startsWith("/supervisor") || pathname === "/login" || pathname?.startsWith("/comercios")) return null;
 
   const toggleArticulo = (id) => setExpandidoId((prev) => (prev === id ? null : id));
 

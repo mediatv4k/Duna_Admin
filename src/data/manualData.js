@@ -108,7 +108,7 @@ const manualData = [
       "En el cobro, elige 'Pago Móvil'. La pantalla del cajero muestra solo el Total a pagar (Bs. y USD), el botón '📲 Enviar Link de Pago por WhatsApp' y los campos de reporte; no hay datos bancarios ni subida de imágenes.",
       "Pulsa '📲 Enviar Link de Pago por WhatsApp' (requiere el teléfono del cliente): se crea la orden de pago y se abre WhatsApp con el mensaje y el enlace directo /pago/...",
       "Debajo aparece 'Esperando el reporte del cliente...'. El sistema escucha la orden en tiempo real, sin recargar la página.",
-      "El cliente abre el enlace: ve el total en Bs. y USD, los datos bancarios en cuadrícula 2x2 con '📋 Copiar Todo', y escribe su N° de referencia y su banco emisor. Al pulsar 'Reportar Pago', la caja recibe el aviso.",
+      "El cliente abre el enlace: ve el total en Bs. y USD, los datos bancarios en cuadrícula 2x2 con '📋 Copiar Todo' (Banco, Teléfono, Cédula / RIF y Monto Exacto en líneas separadas) y un botón de copia individual por dato, y escribe su N° de referencia y su banco emisor. Al pulsar 'Reportar Pago', la caja recibe el aviso.",
       "En la caja, 'N° de referencia' y 'Banco emisor' se autocompletan solos y aparece '✓ El cliente reportó su pago'. También puedes escribir o corregir esos datos a mano si el cliente te los dicta en mostrador.",
       "Verifica la referencia en tu banco y pulsa 'Confirmar Pago'.",
     ],

@@ -10,6 +10,7 @@ function esRutaPublica(pathname) {
   if (pathname === "/login") return true;
   if (pathname.startsWith("/pago/")) return true;
   if (pathname.startsWith("/supervisor")) return true;
+  if (pathname.startsWith("/comercios")) return true;
   return false;
 }
 

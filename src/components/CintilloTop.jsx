@@ -34,8 +34,8 @@ export default function CintilloTop() {
   const { perfil, setPerfil } = useBusinessProfile();
   const { perfil: perfilAuth, logout } = useAuth();
 
-  // Portal público de autoservicio / portal móvil del supervisor / pantalla de acceso: sin chrome administrativo
-  if (pathname?.startsWith("/pago/") || pathname?.startsWith("/supervisor") || pathname === "/login") return null;
+  // Portal público de autoservicio / portal móvil del supervisor / pantalla de acceso / portal de comercios: sin chrome administrativo
+  if (pathname?.startsWith("/pago/") || pathname?.startsWith("/supervisor") || pathname === "/login" || pathname?.startsWith("/comercios")) return null;
 
   return (
     <div className="sticky top-0 z-50 bg-[#0a0e17] text-slate-300 border-b border-white/5">
