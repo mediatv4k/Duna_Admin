@@ -106,6 +106,89 @@ async function cargarTiendasComercio(signal) {
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
 }
 
+// --- Subida de imágenes (POST /user/:user/image/upload, multipart/form-data) ---
+const TIPOS_IMAGEN_PERMITIDOS = ["image/png", "image/jpeg", "image/webp"];
+const MAX_IMAGEN_MB = 10;
+// El nombre del campo multipart no está confirmado: se prueba "file" y luego "image", y se recuerda el que acepte
+const CAMPOS_ARCHIVO_IMAGEN = ["file", "image"];
+let campoImagenConfirmado = null;
+
+function validarArchivoImagen(archivo) {
+  if (!TIPOS_IMAGEN_PERMITIDOS.includes(archivo.type)) {
+    return `Formato no permitido (${archivo.type || "desconocido"}). Usa PNG, JPG o WEBP.`;
+  }
+  if (archivo.size > MAX_IMAGEN_MB * 1024 * 1024) {
+    return `La imagen pesa ${(archivo.size / (1024 * 1024)).toFixed(1)} MB y el máximo es ${MAX_IMAGEN_MB} MB.`;
+  }
+  return "";
+}
+
+// La forma de la respuesta no está confirmada: se busca la URL pública en los campos habituales
+function extraerUrlImagen(datos) {
+  const d = datos?.data;
+  const candidatos = [d, d?.url, d?.imageUrl, d?.image_url, d?.image, d?.location, d?.path, datos?.url, datos?.imageUrl, datos?.image];
+  for (const c of candidatos) {
+    if (typeof c !== "string" || !c.trim()) continue;
+    const t = c.trim();
+    if (/^https?:\/\//i.test(t)) return t;
+    if (t.startsWith("/")) return `${ADONIS_BASE}${t}`;
+    if (/\.(png|jpe?g|webp|gif)(\?|$)/i.test(t)) return `${ADONIS_BASE}/${t}`;
+  }
+  return "";
+}
+
+// fetch no expone el avance de una subida: XMLHttpRequest sí. No se fija Content-Type (el navegador pone el boundary).
+function enviarMultipartConProgreso(url, formData, token, onProgreso) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.timeout = 90000;
+    xhr.setRequestHeader("apiKey", ADONIS_API_KEY);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgreso(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let datos = null;
+      try {
+        datos = JSON.parse(xhr.responseText);
+      } catch (e) {
+        datos = null;
+      }
+      resolve({ status: xhr.status, ok: xhr.status >= 200 && xhr.status < 300, datos });
+    };
+    xhr.onerror = () => reject(new Error("No hubo conexión con el servidor al subir la imagen."));
+    xhr.ontimeout = () => reject(new Error("La subida tardó demasiado y se canceló. Revisa tu conexión e intenta de nuevo."));
+    xhr.send(formData);
+  });
+}
+
+// Sube la imagen y devuelve su URL pública. Solo se reintenta con otro nombre de campo si el servidor rechazó la
+// validación (400/422); un 401, 403 o 5xx corta de inmediato con el mensaje real del servidor.
+async function subirImagenComercio(idUsuario, archivo, token, onProgreso) {
+  const url = `${ADONIS_BASE}/user/${encodeURIComponent(idUsuario)}/image/upload`;
+  const candidatos = campoImagenConfirmado ? [campoImagenConfirmado] : CAMPOS_ARCHIVO_IMAGEN;
+  let ultimoError = null;
+  for (const campo of candidatos) {
+    const formData = new FormData();
+    formData.append(campo, archivo, archivo.name);
+    const { status, ok, datos } = await enviarMultipartConProgreso(url, formData, token, onProgreso);
+    if (ok && datos && (datos.code === undefined || datos.code === 1)) {
+      const urlPublica = extraerUrlImagen(datos);
+      if (!urlPublica) {
+        throw new Error(`El servidor aceptó la imagen pero no devolvió una URL reconocible. Respuesta: ${JSON.stringify(datos).slice(0, 200)}`);
+      }
+      campoImagenConfirmado = campo;
+      return urlPublica;
+    }
+    const detalle = typeof datos?.message === "object" ? JSON.stringify(datos.message) : datos?.message;
+    ultimoError = new Error(detalle || `Adonis respondió HTTP ${status} al subir la imagen.`);
+    if (status !== 400 && status !== 422) break;
+  }
+  if (candidatos.length > 1) ultimoError.message += ` (se probó con los campos: ${candidatos.join(", ")})`;
+  throw ultimoError;
+}
+
 // Precio V2 preservando lo que ya trajo Adonis (promoPrice y cualquier otra clave de metadata.price): solo se
 // fija basePrice, e infoPrice lo acompaña mientras estuviera alineado con el basePrice anterior (o ausente).
 function fusionarPrecioMeta(precioPrevio, nuevoBase) {
@@ -652,6 +735,93 @@ function SelectorTienda({ tiendas, activaId, nombreActivo, cargandoLista, errorL
   );
 }
 
+// Zona de carga de imagen del modal: arrastrar y soltar o elegir archivo, vista previa inmediata (la local mientras
+// sube, luego la URL del servidor), progreso, y reemplazar/quitar. Es presentacional: la subida la hace el padre.
+function SubidaImagen({ valor, vistaPreviaLocal, subiendo, progreso, error, onArchivo, onQuitar }) {
+  const inputRef = useRef(null);
+  const [arrastrando, setArrastrando] = useState(false);
+  const mostrada = vistaPreviaLocal || valor;
+
+  const soltar = (e) => {
+    e.preventDefault();
+    setArrastrando(false);
+    const archivo = e.dataTransfer?.files?.[0];
+    if (archivo && !subiendo) onArchivo(archivo);
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[11px] font-bold text-slate-600 block">Imagen</label>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png, image/jpeg, image/webp"
+        aria-label="Seleccionar imagen del producto"
+        className="hidden"
+        onChange={(e) => {
+          const archivo = e.target.files?.[0];
+          e.target.value = "";
+          if (archivo) onArchivo(archivo);
+        }}
+      />
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!subiendo) setArrastrando(true);
+        }}
+        onDragLeave={() => setArrastrando(false)}
+        onDrop={soltar}
+        data-zona-imagen
+        className={`flex items-center gap-3 p-2.5 rounded-xl border-2 border-dashed transition ${arrastrando ? "border-[#FE6712] bg-orange-50" : "border-slate-200 bg-white"}`}
+      >
+        <div className="relative w-20 h-20 shrink-0 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center">
+          {mostrada ? (
+            // eslint-disable-next-line @next/next/no-img-element -- vista previa dinámica (blob local o URL arbitraria), incompatible con next/image sin configurar dominios
+            <img src={mostrada} alt="Vista previa de la imagen del producto" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = IMAGEN_DEFECTO; }} />
+          ) : (
+            <Camera className="w-6 h-6 text-slate-300" />
+          )}
+          {subiendo && (
+            <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center gap-0.5">
+              <Loader2 className="w-5 h-5 text-[#FE6712] animate-spin" />
+              <span className="text-[10px] font-black text-slate-700">{progreso}%</span>
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="text-[11px] text-slate-500">Arrastra una imagen aquí o elige un archivo. PNG, JPG o WEBP · máx. {MAX_IMAGEN_MB} MB.</p>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={subiendo}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 text-slate-700 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border border-slate-200 disabled:opacity-60"
+            >
+              <Upload className="w-3.5 h-3.5 text-[#FE6712]" /> {valor ? "Reemplazar" : "Seleccionar archivo"}
+            </button>
+            {valor && (
+              <button
+                type="button"
+                onClick={onQuitar}
+                disabled={subiendo}
+                className="px-3 py-1.5 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border border-slate-200 disabled:opacity-60"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Quitar
+              </button>
+            )}
+          </div>
+          {subiendo && (
+            <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progreso} className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full bg-[#FE6712] transition-all" style={{ width: `${progreso}%` }} />
+            </div>
+          )}
+        </div>
+      </div>
+      {error && <p role="alert" className="text-[11px] font-bold text-rose-600">{error}</p>}
+    </div>
+  );
+}
+
 // Celda numérica editable en línea: guarda con Enter o al perder el foco, solo si el valor es válido
 // y cambió. Escape cancela. Sin efectos: el borrador vive únicamente mientras la celda tiene el foco.
 function CeldaEditable({ valor, onGuardar, prefijo = "", entero = false, deshabilitado = false, etiqueta, claseTexto = "text-slate-900" }) {
@@ -743,6 +913,13 @@ export default function ComerciosProductosPage() {
   const [errorTiendas, setErrorTiendas] = useState("");
   const [recargaTiendas, setRecargaTiendas] = useState(0);
   const [importando, setImportando] = useState(false);
+  // Subida de imágenes del modal: el usuario dueño del token (no la tienda) es el que va en la ruta del upload
+  const idUsuarioSubida = comercio?.userId ?? comercio?.user?.id ?? comercio?.id ?? null;
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [progresoImagen, setProgresoImagen] = useState(0);
+  const [errorImagen, setErrorImagen] = useState("");
+  const [vistaPreviaLocal, setVistaPreviaLocal] = useState("");
+  const sesionModal = useRef(0);
   const nombreSesion = comercio?.name || comercio?.nombre || "";
   const nombreActivo = tiendas.find((t) => String(t.id) === String(storeId))?.nombre
     || (!esModoMaster && nombreSesion)
@@ -771,7 +948,6 @@ export default function ComerciosProductosPage() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [productoEnEdicion, setProductoEnEdicion] = useState(null);
   const fileInputRef = useRef(null);
-  const imageInputRef = useRef(null);
 
   const [formData, setFormData] = useState(FORM_INICIAL);
   const [nuevoTopping, setNuevoTopping] = useState({ nombre: "", precioExtra: "" });
@@ -1069,21 +1245,57 @@ export default function ComerciosProductosPage() {
     setModalJsonAbierto(true);
   };
 
-  const handleImageFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert("Recomendamos fotos menores a 2MB.");
+  // Sube el archivo a Adonis y asigna la URL pública devuelta al campo image del formulario. Si falla, el modal
+  // sigue abierto con todo lo escrito y la imagen anterior intacta; solo se muestra el aviso bajo la zona de carga.
+  // El resultado de una subida iniciada en otra sesión del modal (se cerró y se abrió otro) se descarta.
+  const handleArchivoImagen = async (archivo) => {
+    const sesion = sesionModal.current;
+    const vigente = () => sesionModal.current === sesion;
+    setErrorImagen("");
+    const problema = validarArchivoImagen(archivo);
+    if (problema) {
+      setErrorImagen(problema);
+      return;
+    }
+    if (!token || idUsuarioSubida == null) {
+      setErrorImagen("No se puede subir la imagen: falta el identificador de tu usuario en la sesión. Vuelve a iniciar sesión.");
+      return;
+    }
+    const previa = URL.createObjectURL(archivo);
+    setVistaPreviaLocal(previa);
+    setProgresoImagen(0);
+    setSubiendoImagen(true);
+    try {
+      const url = await subirImagenComercio(idUsuarioSubida, archivo, token, (p) => { if (vigente()) setProgresoImagen(p); });
+      if (vigente()) setFormData((prev) => ({ ...prev, image: url }));
+    } catch (err) {
+      console.error(err);
+      if (vigente()) setErrorImagen(err.message || "No se pudo subir la imagen.");
+    } finally {
+      URL.revokeObjectURL(previa);
+      if (vigente()) {
+        setSubiendoImagen(false);
+        setVistaPreviaLocal("");
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, image: reader.result }));
-      };
-      reader.readAsDataURL(file);
     }
   };
 
+  const handleQuitarImagen = () => {
+    setErrorImagen("");
+    setFormData((prev) => ({ ...prev, image: "" }));
+  };
+
+  // Cada apertura del modal es una sesión nueva: se limpia el estado de la subida anterior
+  const reiniciarSubidaImagen = () => {
+    sesionModal.current += 1;
+    setErrorImagen("");
+    setSubiendoImagen(false);
+    setProgresoImagen(0);
+    setVistaPreviaLocal("");
+  };
+
   const abrirModalNuevo = () => {
+    reiniciarSubidaImagen();
     setProductoEnEdicion(null);
     setFormData({
       ...FORM_INICIAL,
@@ -1095,6 +1307,7 @@ export default function ComerciosProductosPage() {
 
   const abrirModalEditar = (prod) => {
     const precioReal = prod?.metadata?.price?.basePrice ?? prod?.price ?? 0;
+    reiniciarSubidaImagen();
     setProductoEnEdicion(prod);
     setFormData({
       ...FORM_INICIAL,
@@ -1865,15 +2078,18 @@ export default function ComerciosProductosPage() {
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs disabled:opacity-60"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold text-slate-600 block">Imagen</label>
-                  <input type="file" ref={imageInputRef} onChange={handleImageFileChange} accept="image/*" className="hidden" />
-                  <button type="button" onClick={() => imageInputRef.current?.click()} className="w-full px-3.5 py-2 bg-slate-100 hover:bg-orange-50 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-200">
-                    <Camera className="w-4 h-4 text-[#FE6712]" /> Subir foto local
-                  </button>
-                </div>
               </div>
-              <input type="text" value={formData.image.startsWith("data:") ? "" : formData.image} onChange={(e) => setFormData({ ...formData, image: e.target.value })} placeholder="o pega una URL de imagen..." className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+              <SubidaImagen
+                valor={formData.image}
+                vistaPreviaLocal={vistaPreviaLocal}
+                subiendo={subiendoImagen}
+                progreso={progresoImagen}
+                error={errorImagen}
+                onArchivo={handleArchivoImagen}
+                onQuitar={handleQuitarImagen}
+              />
+              {/* Modo alterno: URL externa escrita a mano */}
+              <input type="text" value={formData.image.startsWith("data:") ? "" : formData.image} disabled={subiendoImagen} onChange={(e) => setFormData({ ...formData, image: e.target.value })} placeholder="o pega una URL de imagen..." aria-label="URL de imagen externa" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs disabled:opacity-60" />
 
               {!esPerfilSimple && (
                 <div>
@@ -2094,7 +2310,7 @@ export default function ComerciosProductosPage() {
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button type="button" onClick={() => setModalAbierto(false)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold">Cancelar</button>
-                <button type="submit" disabled={guardando} className="px-5 py-2 bg-[#FE6712] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-60">
+                <button type="submit" disabled={guardando || subiendoImagen} title={subiendoImagen ? "Espera a que termine la subida de la imagen" : undefined} className="px-5 py-2 bg-[#FE6712] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-60">
                   {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                   {guardando ? "Guardando en Adonis..." : "Guardar"}
                 </button>
