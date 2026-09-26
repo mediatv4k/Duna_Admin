@@ -63,6 +63,17 @@ async function actualizarProductoComercio(adonisId, cambios, token) {
   });
 }
 
+// Precio V2 preservando lo que ya trajo Adonis (promoPrice y cualquier otra clave de metadata.price): solo se
+// fija basePrice, e infoPrice lo acompaña mientras estuviera alineado con el basePrice anterior (o ausente).
+function fusionarPrecioMeta(precioPrevio, nuevoBase) {
+  const previo = precioPrevio || {};
+  const precioMeta = { ...previo, basePrice: nuevoBase };
+  if (previo.infoPrice == null || Number(previo.infoPrice) === Number(previo.basePrice)) {
+    precioMeta.infoPrice = nuevoBase;
+  }
+  return precioMeta;
+}
+
 // GET /store/:storeId/products/all: el arreglo plano vive en data.products.data,
 // y la metadata de paginación en data.products.meta (misma convención que last_page del catálogo público).
 async function cargarCatalogoComercio(storeId, token, signal) {
@@ -338,6 +349,10 @@ function tieneAlgunCampoFarmacia(campos) {
 // guardarFichasFarmaciaLocalMasivo). Devuelve true/false en vez de lanzar: ningún rechazo individual
 // de Adonis debe interrumpir el lote ni la interfaz.
 async function sincronizarMetadataFarmacia(producto, camposFarmacia, token, esPrimero) {
+  // Este PUT no cambia ningún dato del producto: la metadata que trajo Adonis manda sobre lo reconstruido, así
+  // no se pierden weight/volume/comandaDisplay/variants (columnas del Excel v2) ni se trunca ni se vacía nada.
+  // Lo reconstruido solo rellena las claves que Adonis no devolvió.
+  const metaPrevia = producto.metadataCrudo || {};
   const payload = {
     id: producto.adonisId,
     name: producto.name,
@@ -365,7 +380,8 @@ async function sincronizarMetadataFarmacia(producto, camposFarmacia, token, esPr
       areaDespacho: producto.areaDespacho || "Cocina",
       toppings: producto.toppings || [],
       unidadMedida: producto.unidadMedida || "kg",
-      price: { basePrice: Number(producto.price) || 0, infoPrice: Number(producto.price) || 0, promoPrice: 0 },
+      ...metaPrevia,
+      price: fusionarPrecioMeta(metaPrevia.price, Number(producto.price) || 0),
     },
   };
   try {
@@ -928,8 +944,12 @@ export default function ComerciosProductosPage() {
       description: formData.descripcion || "",
     };
 
-    // Campos avanzados/personalizados que Adonis no soporta nativamente: viajan agrupados en "metadata"
+    // Campos avanzados/personalizados que Adonis no soporta nativamente: viajan agrupados en "metadata".
+    // En edición se parte de la metadata que trajo Adonis (weight, volume, comandaDisplay, variants y cualquier
+    // otra clave): lo que el formulario edita la sobrescribe, pero lo que no maneja no se pierde.
+    const metadataPrevia = productoEnEdicion?.metadataCrudo || {};
     const metadata = {
+      ...metadataPrevia,
       barcode: formData.barcode,
       subcategoria: formData.subcategoria,
       marca: formData.marca,
@@ -957,12 +977,11 @@ export default function ComerciosProductosPage() {
     };
 
     // Esquema V2: el core de Adonis lee el precio desde metadata.price.basePrice, no de la raíz
-    metadata.price = {
-      basePrice: Number(formData.price) || 0,
-      infoPrice: Number(formData.price) || 0,
-      promoPrice: Number(formData.promoPrice) || 0,
-    };
-
+    // El modal no tiene campo de precio promocional: en edición se conserva el promoPrice que ya tenía Adonis;
+    // solo un producto nuevo (o sin promo previo) parte de 0, como antes.
+    metadata.price = fusionarPrecioMeta(metadataPrevia.price, Number(formData.price) || 0);
+    if (Number(formData.promoPrice)) metadata.price.promoPrice = Number(formData.promoPrice);
+    else if (metadata.price.promoPrice === undefined) metadata.price.promoPrice = 0;
 
     const payload = { ...raiz, metadata };
     // El backend exige la subcategoría bajo esta clave en snake_case en la raíz del payload
@@ -1062,12 +1081,7 @@ export default function ComerciosProductosPage() {
   // completa que trajo Adonis cambiando únicamente price, para no perder el resto de sus claves.
   const handleEditarPrecio = (producto, nuevo) => {
     const metaPrevia = producto.metadataCrudo || {};
-    const precioPrevio = metaPrevia.price || {};
-    const precioMeta = { ...precioPrevio, basePrice: nuevo };
-    if (precioPrevio.infoPrice == null || Number(precioPrevio.infoPrice) === Number(precioPrevio.basePrice)) {
-      precioMeta.infoPrice = nuevo;
-    }
-    const metadata = { ...metaPrevia, price: precioMeta };
+    const metadata = { ...metaPrevia, price: fusionarPrecioMeta(metaPrevia.price, nuevo) };
     guardarCambioRapido(producto, { price: nuevo, metadataCrudo: metadata }, { price: nuevo, metadata });
   };
 
