@@ -2,7 +2,7 @@
 import React from "react";
 import Link from "next/link";
 import {
-  Receipt, ShoppingCart, Boxes, PlusCircle, Zap
+  Receipt, ShoppingCart, Boxes, PlusCircle, Zap, TrendingUp
 } from "lucide-react";
 
 export default function Home() {
@@ -120,6 +120,27 @@ export default function Home() {
               <Link href="/inventario">
               <button className="mt-6 w-full py-3 bg-slate-50 hover:bg-[#FE6712] text-slate-700 hover:text-white rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 border border-slate-200 hover:border-transparent">
                 <PlusCircle className="w-4 h-4" /> Ir a Inventario
+              </button>
+              </Link>
+            </div>
+
+            {/* Módulo Liquidaciones y Reportes (solo Administración/Gerencia) */}
+            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 hover:border-indigo-500 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group">
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[11px] font-extrabold text-indigo-600 uppercase tracking-wider">Módulo 5</span>
+                  <h3 className="text-lg font-extrabold text-slate-900 group-hover:text-indigo-700 transition mt-1">Liquidaciones y Reportes</h3>
+                  <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                    Resumen ejecutivo, cuadre por método de pago, productos estrella y monedero. Solo Administración/Gerencia.
+                  </p>
+                </div>
+              </div>
+              <Link href="/reportes">
+              <button className="mt-6 w-full py-3 bg-slate-50 hover:bg-indigo-600 text-slate-700 hover:text-white rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 border border-slate-200 hover:border-transparent">
+                <PlusCircle className="w-4 h-4" /> Ir a Liquidaciones
               </button>
               </Link>
             </div>

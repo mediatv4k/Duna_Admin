@@ -212,3 +212,51 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 #   exit 0 (proyecto 100% JavaScript puro: sin tsconfig.json ni .ts/.tsx, por
 #   lo que `tsc --noEmit` no aplica y no se usa).
 # ==============================================================================
+
+# ==============================================================================
+## LIQUIDACIONES Y REPORTES (src/app/reportes/page.jsx) — MÓDULO 5
+# ==============================================================================
+# - Estado (2026-09-27): módulo NUEVO, funcional en la UI, pero alimentado por un
+#   set de datos de ejemplo (PEDIDOS_DEMO / MOVIMIENTOS_MONEDERO_DEMO, arriba del
+#   propio archivo). No existe hoy, en ningún punto del repo, un endpoint de
+#   Adonis para listar pedidos por rango de fechas ni para movimientos de
+#   monedero (solo hay uno para CREAR un pedido: POST
+#   /delivery/request/purchase/web, en src/services/adonisPosSync.js y
+#   src/app/pos/page.jsx). Tampoco existía ya un "reporte plano" previo en el
+#   repo que transformar — se preguntó al usuario y se decidió construir el
+#   módulo completo contra datos de ejemplo. Punto único de conexión futura:
+#   reemplazar cargarPedidosDemo() y cargarMovimientosMonederoDemo() (ambas al
+#   inicio del archivo) por las llamadas fetch reales; el resto del módulo
+#   (cálculos, vistas, formato) no debería necesitar cambios.
+# - Ruta y enlace: /reportes, con una tarjeta "Módulo 5" agregada al dashboard
+#   (src/app/page.jsx) junto a POS/CXC/CXP/Inventario, siguiendo el mismo patrón
+#   visual (icono, descripción, botón).
+# - Aislamiento de roles (Regla de Oro 3): toda la página está detrás de
+#   `useAuth().isAdmin` (src/context/AuthContext.jsx; true solo si
+#   `user.rol === 'superadmin' || 'admin'`). Sin ese rol se muestra una tarjeta
+#   "Acceso restringido" y no se renderiza, calcula ni expone ninguna cifra
+#   financiera (comisiones, monedero, márgenes). Esto es aparte de AuthGate
+#   (src/components/AuthGate.jsx), que ya exige una sesión existente antes de
+#   llegar a esta página; /reportes no es una ruta pública.
+# - Fórmula financiera (Regla de Oro 1): función única `calcularCuadreFinanciero`
+#   que replica exactamente Ventas Netas − Comisiones − Delivery − Propinas =
+#   Neto del Periodo. No se debe modificar esta fórmula sin autorización expresa;
+#   verificada a mano contra los 7 pedidos de ejemplo (Ventas Netas $137.75,
+#   Comisiones $6.90, Delivery $8.00, Propinas $5.00, Neto $117.85) y contra un
+#   filtro de un solo día (2 pedidos, Neto $31.67).
+# - Lectura segura de variantes (Regla de Oro 2): `calcularRankingProductos` lee
+#   `pedido?.items` con encadenamiento opcional y `Array.isArray`; un pedido de
+#   ejemplo sin `items` (PED-0087, simulando uno "antiguo") se excluye del
+#   ranking sin romper ninguna vista — verificado en el navegador.
+# - Las 4 vistas (tabs, no rutas separadas, dentro de la misma página): Resumen
+#   Ejecutivo (KPIs + filtro from/to), Desglose de Pedidos (Delivery vs. Pickup,
+#   cuadre por método de pago: Zelle/Pago Móvil/Efectivo/Saldo), Inteligencia
+#   Comercial (ranking de productos/sabores por unidades vendidas) e Historial
+#   del Monedero (recargas/retiros/comisiones, verde/rojo según signo).
+# - Cero modales: todo se renderiza en el Workspace central (tabs + tablas
+#   inline), sin overlays ni ventanas flotantes.
+# - Verificado en el navegador (Adonis no aplica aquí, no hay backend que
+#   mockear): gateo por rol (cajero → restringido; superadmin → módulo
+#   completo), las 4 vistas, el filtro de fechas recalculando en vivo, y el
+#   caso sin variantes. `npx eslint` y `npm run build` en exit 0.
+# ==============================================================================
