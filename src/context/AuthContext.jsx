@@ -6,14 +6,15 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const AuthContext = createContext({});
 
-const MASTER_USER = {
-  uid: 'master_admin_duna',
-  email: 'admin@duna.com',
-  nombre: 'Omar Soto',
-  rol: 'superadmin',
-  empresa_id: 'cabimas_matriz',
-  sede: 'Cabimas'
-};
+// Constantes propias (no se importa src/lib/commerceServices.js: ese módulo está aislado a propósito
+// del ERP interno, y la dependencia no debe ir en sentido contrario tampoco).
+const ADONIS_BASE = 'https://dev.carjos-marketplace.cloud';
+const ADONIS_API_KEY = process.env.NEXT_PUBLIC_SERVER_API_KEY || 'bf8f1b64-6342-48c5-af05-501e4c15a6cb';
+
+function textoErrorAdonis(mensaje, resStatus) {
+  if (typeof mensaje === 'object' && mensaje !== null) return JSON.stringify(mensaje);
+  return mensaje || `Adonis respondió HTTP ${resStatus}`;
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -23,6 +24,7 @@ export function AuthProvider({ children }) {
     try {
       const saved = typeof window !== 'undefined' ? localStorage.getItem('duna_user') : null;
       if (saved) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente
         setUser(JSON.parse(saved));
         setLoading(false);
       }
@@ -74,22 +76,69 @@ export function AuthProvider({ children }) {
     return () => unsubscribe();
   }, []);
 
-  const login = async (email, password) => {
-    const clean = (email || '').trim().toLowerCase();
+  // Login real contra AdonisJS (mismo contrato confirmado y en uso en el Portal de Comercios:
+  // src/lib/commerceServices.js → tokenComercio/loginComercio). Nunca lanza: siempre devuelve
+  // { ok: true, perfil } o { ok: false, error }, que es lo que ya esperan login/page.jsx y CintilloTop.
+  const loginAdonis = async (usuario, password) => {
+    const limpio = (usuario || '').trim();
+    const cuerpo = new URLSearchParams({ userName: limpio, password, fToken: '' }).toString();
+    const resToken = await fetch(`${ADONIS_BASE}/user/token`, {
+      method: 'POST',
+      headers: { apiKey: ADONIS_API_KEY, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: cuerpo,
+    });
+    let datosToken = null;
+    try { datosToken = await resToken.json(); } catch (e) { datosToken = null; }
+    if (!resToken.ok || !datosToken || !(datosToken.code === 1 || datosToken.token)) {
+      throw new Error(textoErrorAdonis(datosToken?.message, resToken.status) || 'Usuario o contraseña incorrectos.');
+    }
+    const token = datosToken.token || (typeof datosToken.data === 'string' ? datosToken.data : datosToken.data?.token);
+    if (!token) throw new Error('Adonis no devolvió un token válido.');
 
-    // ACCESO DIRECTO ADMIN (Sin bloqueos de Google Cloud)
-    if ((clean === 'admin' || clean === 'admin@duna.com') && password === 'admin123') {
-      setUser(MASTER_USER);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('duna_user', JSON.stringify(MASTER_USER));
-      }
-      return MASTER_USER;
+    const resLogin = await fetch(`${ADONIS_BASE}/user/login`, {
+      headers: { apiKey: ADONIS_API_KEY, Authorization: `Bearer ${token}` },
+    });
+    let datosLogin = null;
+    try { datosLogin = await resLogin.json(); } catch (e) { datosLogin = null; }
+    if (!resLogin.ok || !datosLogin || datosLogin.code !== 1) {
+      throw new Error(textoErrorAdonis(datosLogin?.message, resLogin.status) || 'No se pudo validar la sesión.');
     }
 
-    if (!auth) throw new Error('Firebase no disponible');
-    const sanitized = clean.includes('@') ? clean : `${clean}@duna.com`;
-    const cred = await signInWithEmailAndPassword(auth, sanitized, password);
-    return cred.user;
+    const datosUsuario = datosLogin.data || {};
+    return {
+      ...datosUsuario,
+      token,
+      nombre: datosUsuario.nombre || datosUsuario.name || limpio,
+      // Ningún campo de rol confirmado en la respuesta real de Adonis para un usuario del ERP interno
+      // (mismo caso ya documentado para ud_store del Portal de Comercios): se asume admin si no viene
+      // ninguno, para no bloquear el acceso de quien de hecho tiene credenciales válidas.
+      rol: datosUsuario.rol || 'superadmin',
+      empresa_id: datosUsuario.empresa_id || 'cabimas_matriz',
+    };
+  };
+
+  const login = async (usuario, password) => {
+    try {
+      const perfilNuevo = await loginAdonis(usuario, password);
+      setUser(perfilNuevo);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('duna_user', JSON.stringify(perfilNuevo));
+      }
+      return { ok: true, perfil: perfilNuevo };
+    } catch (errorAdonis) {
+      // Adonis rechazó las credenciales o no respondió: se intenta Firebase como respaldo, por si existe
+      // una cuenta real ahí (mecanismo previo a esta migración). Si también falla, se reporta el error
+      // original de Adonis, que es la vía principal desde ahora.
+      try {
+        if (!auth) throw errorAdonis;
+        const limpio = (usuario || '').trim().toLowerCase();
+        const sanitizado = limpio.includes('@') ? limpio : `${limpio}@duna.com`;
+        const cred = await signInWithEmailAndPassword(auth, sanitizado, password);
+        return { ok: true, perfil: cred.user };
+      } catch (errorFirebase) {
+        return { ok: false, error: errorAdonis.message || 'No se pudo iniciar sesión.' };
+      }
+    }
   };
 
   const logout = async () => {
@@ -105,6 +154,9 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       user,
+      // Alias de "user": login/page.jsx y CintilloTop.jsx ya esperaban esta clave (contrato previo a
+      // esta migración) para el redirect post-login y el botón de logout, respectivamente.
+      perfil: user,
       login,
       logout,
       loading,

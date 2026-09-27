@@ -23,9 +23,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setEnviando(true);
-    // Atajo de acceso rápido: escribir solo "admin" autocompleta el correo del usuario semilla
-    const correoFinal = email.trim().toLowerCase() === "admin" ? "admin@duna.com" : email.trim();
-    const resultado = await login(correoFinal, password);
+    const resultado = await login(email.trim(), password);
     setEnviando(false);
     if (!resultado.ok) {
       setError(resultado.error || "No se pudo iniciar sesión.");
@@ -56,7 +54,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 shadow-2xl space-y-4">
           <div>
-            <label className="text-[11px] font-bold text-slate-600 block mb-1">Correo Electrónico</label>
+            <label className="text-[11px] font-bold text-slate-600 block mb-1">Usuario</label>
             <div className="relative">
               <Mail className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
               <input
@@ -64,8 +62,8 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin"
-                autoComplete="email"
+                placeholder="Usuario o correo"
+                autoComplete="username"
                 autoFocus
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-[#FE6712]"
               />
@@ -81,7 +79,7 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="admin123"
+                placeholder="••••••••"
                 autoComplete="current-password"
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-[#FE6712]"
               />
@@ -94,10 +92,6 @@ export default function LoginPage() {
               <span>{error}</span>
             </div>
           )}
-
-          <p className="text-center text-[10px] text-slate-400 font-medium">
-            Usuario: <span className="font-bold text-slate-600">admin</span> · Clave: <span className="font-bold text-slate-600">admin123</span>
-          </p>
 
           <button
             type="submit"
