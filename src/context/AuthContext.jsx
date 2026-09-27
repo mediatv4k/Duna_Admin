@@ -1,14 +1,11 @@
-﻿'use client';
+'use client';
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { auth, db } from '../lib/firebase';
-import { signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const AuthContext = createContext({});
 
 // Constantes propias (no se importa src/lib/commerceServices.js: ese módulo está aislado a propósito
 // del ERP interno, y la dependencia no debe ir en sentido contrario tampoco).
-const ADONIS_BASE = 'https://dev.carjos-marketplace.cloud';
+const ADONIS_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://dev.carjos-marketplace.cloud';
 const ADONIS_API_KEY = process.env.NEXT_PUBLIC_SERVER_API_KEY || 'bf8f1b64-6342-48c5-af05-501e4c15a6cb';
 
 function textoErrorAdonis(mensaje, resStatus) {
@@ -20,60 +17,22 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Autenticación exclusiva contra Adonis: no hay ningún otro proveedor de identidad que restaurar al
+  // montar. Firebase quedó retirado por completo de este archivo (ver fix posterior a esta migración):
+  // en producción (Vercel), con una API key de Firebase inválida o sin configurar, incluso el simple
+  // listener de sesión de Firebase (sin que nadie llegara a usar su login) intentaba refrescar un token
+  // contra sus servidores y fallaba con "API key no válida". Sacarlo de aquí elimina esa fuente de error
+  // de raíz. src/lib/firebase.js sigue existiendo e intacto para Firestore en el resto del ERP
+  // (supervisor, pagos móviles, etc.) — solo se retiró su uso para AUTENTICACIÓN en este archivo.
   useEffect(() => {
     try {
       const saved = typeof window !== 'undefined' ? localStorage.getItem('duna_user') : null;
       if (saved) {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente
         setUser(JSON.parse(saved));
-        setLoading(false);
       }
     } catch (e) {}
-
-    let unsubscribe = () => {};
-    try {
-      if (auth) {
-        unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-          if (fbUser) {
-            try {
-              if (db) {
-                const docSnap = await getDoc(doc(db, 'duna_usuarios', fbUser.uid));
-                if (docSnap.exists()) {
-                  const uData = { uid: fbUser.uid, ...docSnap.data() };
-                  setUser(uData);
-                  localStorage.setItem('duna_user', JSON.stringify(uData));
-                } else {
-                  const newProfile = {
-                    uid: fbUser.uid,
-                    email: fbUser.email,
-                    nombre: 'Omar Soto',
-                    rol: 'superadmin',
-                    empresa_id: 'cabimas_matriz',
-                    sede: 'Cabimas',
-                    creado_en: new Date().toISOString()
-                  };
-                  await setDoc(doc(db, 'duna_usuarios', fbUser.uid), newProfile);
-                  setUser(newProfile);
-                  localStorage.setItem('duna_user', JSON.stringify(newProfile));
-                }
-              }
-            } catch (err) {
-              console.warn('Error Firestore:', err);
-            }
-          } else {
-            const local = typeof window !== 'undefined' ? localStorage.getItem('duna_user') : null;
-            if (!local) setUser(null);
-          }
-          setLoading(false);
-        });
-      } else {
-        setLoading(false);
-      }
-    } catch (e) {
-      setLoading(false);
-    }
-
-    return () => unsubscribe();
+    setLoading(false);
   }, []);
 
   // Login real contra AdonisJS (mismo contrato confirmado y en uso en el Portal de Comercios:
@@ -117,6 +76,8 @@ export function AuthProvider({ children }) {
     };
   };
 
+  // Sin respaldo de ningún otro proveedor: si Adonis rechaza o no responde, el error se devuelve tal
+  // cual al formulario de login. No hay segundo intento que pueda enmascararlo ni fallar por su cuenta.
   const login = async (usuario, password) => {
     try {
       const perfilNuevo = await loginAdonis(usuario, password);
@@ -126,29 +87,15 @@ export function AuthProvider({ children }) {
       }
       return { ok: true, perfil: perfilNuevo };
     } catch (errorAdonis) {
-      // Adonis rechazó las credenciales o no respondió: se intenta Firebase como respaldo, por si existe
-      // una cuenta real ahí (mecanismo previo a esta migración). Si también falla, se reporta el error
-      // original de Adonis, que es la vía principal desde ahora.
-      try {
-        if (!auth) throw errorAdonis;
-        const limpio = (usuario || '').trim().toLowerCase();
-        const sanitizado = limpio.includes('@') ? limpio : `${limpio}@duna.com`;
-        const cred = await signInWithEmailAndPassword(auth, sanitizado, password);
-        return { ok: true, perfil: cred.user };
-      } catch (errorFirebase) {
-        return { ok: false, error: errorAdonis.message || 'No se pudo iniciar sesión.' };
-      }
+      return { ok: false, error: errorAdonis.message || 'No se pudo iniciar sesión.' };
     }
   };
 
-  const logout = async () => {
+  const logout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('duna_user');
     }
     setUser(null);
-    try {
-      if (auth) await fbSignOut(auth);
-    } catch (e) {}
   };
 
   return (
