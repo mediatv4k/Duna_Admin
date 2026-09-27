@@ -64,13 +64,17 @@ async function actualizarProductoComercio(adonisId, cambios, token) {
   });
 }
 
-// GET /store (solo apiKey): lista de comercios para el selector Master. La forma exacta de la respuesta no está
-// garantizada, así que se busca el arreglo en las envolturas habituales, se soporta paginación si viene
-// meta.last_page, y de cada comercio solo se mapea id (o _id) y nombre (name o nombre).
-async function cargarTiendasComercio(signal) {
+// GET /store: lista de comercios para el selector Master. Verificado contra el backend real (2026-09-27): con
+// SOLO apiKey responde 401 "E_INVALID_API_TOKEN" (idéntico con apiKey ausente, inválida, o con un Bearer
+// inventado) — a diferencia de /store/:id/payment/info, que sí es público solo con apiKey y devuelve 200. Por
+// eso este endpoint también envía el Bearer de la sesión; no se pudo confirmar con un token real de comercio si
+// basta para listar TODAS las tiendas o si requiere un rol master aparte. La forma exacta de la respuesta con
+// 200 tampoco está confirmada, así que se busca el arreglo en las envolturas habituales, se soporta paginación
+// si viene meta.last_page, y de cada comercio solo se mapea id (o _id) y nombre (name o nombre).
+async function cargarTiendasComercio(token, signal) {
   const pedirPagina = async (pagina) => {
     const res = await fetch(`${ADONIS_BASE}/store${pagina > 1 ? `?page=${pagina}` : ""}`, {
-      headers: { apiKey: ADONIS_API_KEY },
+      headers: { apiKey: ADONIS_API_KEY, Authorization: `Bearer ${token}` },
       signal,
     });
     let datos = null;
@@ -982,7 +986,7 @@ export default function ComerciosProductosPage() {
   useEffect(() => {
     if (!token) return undefined;
     const controller = new AbortController();
-    cargarTiendasComercio(controller.signal)
+    cargarTiendasComercio(token, controller.signal)
       .then((lista) => {
         if (controller.signal.aborted) return;
         setTiendas(lista);

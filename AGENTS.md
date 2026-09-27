@@ -72,3 +72,101 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # - Estética: fondo blanco, bordes slate-200, font-mono en números/montos/códigos,
 #   acento naranja #FE6712 en acciones primarias.
 # ==============================================================================
+
+# ==============================================================================
+## PORTAL DE COMERCIOS (/comercios/*)
+# ==============================================================================
+# - Aislamiento: /comercios/* es un módulo separado del ERP interno. No importa
+#   src/lib/firebase.js ni el AuthContext/duna_user del ERP. Sesión propia en
+#   localStorage: "iac_store" (token Bearer) y "ud_store" (JSON del usuario/comercio),
+#   gestionados por src/lib/commerceServices.js (tokenComercio, loginComercio,
+#   iniciarSesionComercio, obtenerTokenComercio, obtenerUsuarioComercio,
+#   cerrarSesionComercio). AuthGate/CintilloTop/ManualDrawer excluyen esta ruta
+#   (un `if`/condición por componente; no se duplica lógica de layout).
+# - Backend: exclusivamente https://dev.carjos-marketplace.cloud, header
+#   apiKey (bf8f1b64-6342-48c5-af05-501e4c15a6cb, o
+#   process.env.NEXT_PUBLIC_SERVER_API_KEY si está definida) + Authorization:
+#   Bearer <iac_store> en los endpoints autenticados. Solo v2: /product,
+#   /product/:id, /store/:storeId/products/all, /store/:storeId/products/batch/v2,
+#   /store/:storeId/payment/info, /store, /user/:user/image/upload. PROHIBIDO
+#   tocar endpoints v1 legados de Excel.
+#
+# - FASE 1 — Importación Excel batch v2 (src/app/comercios/productos/page.jsx,
+#   src/lib/commerceServices.js): subirExcelBatchComercio acepta
+#   { dryRun } como cuarto parámetro; dryRun viaja SOLO como query param
+#   (?deleteMissing=&delete_missing=&dryRun=), nunca en el body multipart.
+#   normalizarErroresBatch() serializa `errors:[{code,message}]` a
+#   [{referencia, mensaje}], serializando mensajes-objeto para no mostrar
+#   "[object Object]". Toggle "Simular (sin guardar)" junto a "Borrar no
+#   incluidos"; en dryRun se aborta todo efecto posterior (sin refetch, sin PUT
+#   de sincronización, sin persistir fichas de farmacia). Resultado (real o
+#   simulado) se muestra en un panel inline bajo la barra de búsqueda —
+#   PROHIBIDO usar alert()/modal para esto — con contadores y una tabla
+#   "Producto / SKU | Mensaje" de filas omitidas/con error.
+# - Ficha técnica de farmacia (9 campos: principioActivo, concentracion,
+#   presentacion, laboratorio, registroSanitario, condicionVenta, cadenaFrio,
+#   lote, fechaVencimiento): Adonis NO la persiste de forma confiable en
+#   ningún campo del producto (metadata suelta se descarta; metadata.variants
+#   vuelve siempre vacío; description con tag rompe el límite de longitud de
+#   esa columna). Se guarda SOLO en localStorage, por tienda y por SKU
+#   (clave `farma_metadata_${storeId}`, leerFichasFarmaciaLocal /
+#   guardarFichaFarmaciaLocal / guardarFichasFarmaciaLocalMasivo). No
+#   depender de que un PUT a Adonis la recuerde.
+# - metadataCrudo: mapearProductoComercio guarda en cada producto local la
+#   metadata cruda que devolvió Adonis (weight, volume, comandaDisplay,
+#   variants y cualquier clave ajena). handleGuardarProducto, la edición
+#   rápida y sincronizarMetadataFarmacia SIEMPRE fusionan sobre esa base
+#   (fusionarPrecioMeta para metadata.price) en vez de reconstruir metadata
+#   desde cero, para no pisar columnas que este módulo no conoce. La
+#   descripción (`description`, raíz y metadata) no lleva límite artificial
+#   de caracteres (se quitó el slice(0,250) y el maxLength del textarea).
+#
+# - FASE 2 — Edición rápida en tabla (misma page.jsx): switch de estado
+#   (ACTIVE/INACTIVE) y celdas editables de precio/stock (componente
+#   CeldaEditable: guarda con Enter o blur si el valor es válido y cambió,
+#   Esc cancela), con actualización optimista + reversión si Adonis rechaza.
+#   Micro-indicador por fila (spinner mientras guarda, check verde ~2s, X roja
+#   con el mensaje si falla) vía estadoFilas: NUNCA modal, todo en la propia
+#   fila. actualizarProductoComercio hace PUT /product/:id con {id, ...cambios}
+#   únicamente (no reconstruye el producto completo).
+#
+# - FASE 3 — Selector Master de tiendas (SelectorTienda + storeIdActivo):
+#   permite a un administrador ver/operar el catálogo de OTRA tienda sin
+#   cerrar sesión ni tocar localStorage. storeId = storeIdActivo ?? storeIdSesion;
+#   esModoMaster = true cuando difieren, mostrando la insignia "MODO MASTER".
+#   Lista de tiendas: GET /store (solo apiKey, sin Bearer) vía
+#   cargarTiendasComercio — forma de la respuesta NO garantizada, se busca el
+#   arreglo en varias envolturas y solo se mapean id/nombre; verificar contra
+#   el backend real antes de asumir su forma. Cambiar de tienda limpia
+#   productos, tasa, búsqueda, filtro, errores, paneles/modales abiertos
+#   (handleCambiarTienda) y deja que el useEffect de storeId dispare el
+#   refetch (AbortController cancela la petición anterior). En Modo Master,
+#   las escrituras (PUT/POST /product, batch v2) llevan {storeId} en el
+#   payload; con la tienda de la propia sesión el payload queda idéntico a
+#   como estaba antes de esta fase. Desplegable sin overlay/modal, anclado a
+#   su botón (max-w-[calc(100vw-5.5rem)] para no desbordar a 320px), con
+#   buscador sin acentos si hay más de 8 tiendas.
+# - Header responsivo: <lg envuelve en filas (flex-wrap, sin sticky, altura
+#   variable); desde lg vuelve a una sola fila de 64px sticky. Los toggles
+#   ("Borrar no incluidos", "Simular") llevan shrink-0 en su pista (w-8 h-5)
+#   para no comprimirse cuando el header se queda sin espacio horizontal.
+#
+# - FASE 4 — Subida directa de imágenes (SubidaImagen + subirImagenComercio):
+#   reemplaza el input de Base64 anterior. Arrastrar/soltar o seleccionar
+#   archivo (PNG/JPG/WEBP, máx. 10MB validado en cliente), vista previa
+#   instantánea (blob local mientras sube, luego URL pública), progreso real
+#   vía XMLHttpRequest (fetch no expone upload progress), botón Quitar, y un
+#   input de URL externa como modo alterno (fallback manual). POST
+#   /user/:user/image/upload, multipart, headers apiKey + Bearer <iac_store>;
+#   el nombre del campo multipart NO está confirmado (se prueba "file" y
+#   luego "image", recordando el que acepte) y la forma de la respuesta
+#   tampoco (se busca la URL en varios campos habituales) — verificar contra
+#   el backend real. Si la subida falla, el modal permanece abierto con todo
+#   lo escrito (nombre, precio, descripción) y la imagen anterior intacta;
+#   el aviso aparece bajo la zona de carga, nunca en un modal aparte. No
+#   existen slots image1/image2 (no hay evidencia de que Adonis los soporte).
+#
+# - Verificación de esta rama: `npx eslint <archivo>` + `npm run build` en
+#   exit 0 (proyecto 100% JavaScript puro: sin tsconfig.json ni .ts/.tsx, por
+#   lo que `tsc --noEmit` no aplica y no se usa).
+# ==============================================================================
