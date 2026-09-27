@@ -283,6 +283,11 @@ function guardarFichasFarmaciaLocalMasivo(storeId, entradas) {
 function mapearProductoComercio(item, idx, storeId) {
   const meta = item.metadata || {};
   const codigoProducto = String(item.code || item.codigo || item.sku || item.id || "").trim().toUpperCase();
+  // Esquema real confirmado contra el backend (2026-09-27): Adonis persiste la ficha de farmacia en
+  // metadata.farmacia (objeto anidado; el booleano real se llama "requiereFrio"). Es la fuente de verdad
+  // cuando existe; localStorage queda como respaldo para productos que aún no se han vuelto a guardar
+  // con el esquema nuevo (ver handleGuardarProducto).
+  const fichaAdonis = meta.farmacia || null;
   const fichaFarmacia = leerFichasFarmaciaLocal(storeId)[codigoProducto] || null;
   if (idx === 0) {
     console.log("--> ITEM CRUDO DESDE ADONIS:", item.codigo, item.metadata || item.meta || item);
@@ -305,15 +310,15 @@ function mapearProductoComercio(item, idx, storeId) {
     outOfStock: Boolean(item.outOfStock),
     descripcion: String(meta.descripcion || item.description || ""),
     nicho: meta.nicho || "General",
-    principioActivo: fichaFarmacia?.principioActivo ?? leerCampoFlexible(item, meta, ["principio_activo", "PRINCIPIO_ACTIVO", "principioActivo"]) ?? "",
-    concentracion: fichaFarmacia?.concentracion ?? leerCampoFlexible(item, meta, ["concentracion", "CONCENTRACION", "concentracionDosis"]) ?? "",
-    presentacion: fichaFarmacia?.presentacion ?? leerCampoFlexible(item, meta, ["presentacion", "PRESENTACION"]) ?? "",
-    laboratorio: fichaFarmacia?.laboratorio ?? leerCampoFlexible(item, meta, ["laboratorio", "LABORATORIO"]) ?? "",
-    registroSanitario: fichaFarmacia?.registroSanitario ?? leerCampoFlexible(item, meta, ["registro_sanitario", "REGISTRO_SANITARIO", "registroSanitario"]) ?? "",
-    condicionVenta: fichaFarmacia?.condicionVenta ?? leerCampoFlexible(item, meta, ["condicion_venta", "CONDICION_VENTA", "condicionVenta"]) ?? "Venta Libre",
-    cadenaFrio: fichaFarmacia ? Boolean(fichaFarmacia.cadenaFrio) : parseBooleano(leerCampoFlexible(item, meta, ["cadena_frio", "CADENA_FRIO", "cadenaFrio"])),
-    lote: fichaFarmacia?.lote ?? leerCampoFlexible(item, meta, ["lote", "LOTE"]) ?? "",
-    fechaVencimiento: fichaFarmacia?.fechaVencimiento ?? leerCampoFlexible(item, meta, ["fecha_vencimiento", "FECHA_VENCIMIENTO", "fechaVencimiento"]) ?? "",
+    principioActivo: fichaAdonis?.principioActivo ?? fichaFarmacia?.principioActivo ?? leerCampoFlexible(item, meta, ["principio_activo", "PRINCIPIO_ACTIVO", "principioActivo"]) ?? "",
+    concentracion: fichaAdonis?.concentracion ?? fichaFarmacia?.concentracion ?? leerCampoFlexible(item, meta, ["concentracion", "CONCENTRACION", "concentracionDosis"]) ?? "",
+    presentacion: fichaAdonis?.presentacion ?? fichaFarmacia?.presentacion ?? leerCampoFlexible(item, meta, ["presentacion", "PRESENTACION"]) ?? "",
+    laboratorio: fichaAdonis?.laboratorio ?? fichaFarmacia?.laboratorio ?? leerCampoFlexible(item, meta, ["laboratorio", "LABORATORIO"]) ?? "",
+    registroSanitario: fichaAdonis?.registroSanitario ?? fichaFarmacia?.registroSanitario ?? leerCampoFlexible(item, meta, ["registro_sanitario", "REGISTRO_SANITARIO", "registroSanitario"]) ?? "",
+    condicionVenta: fichaAdonis?.condicionVenta ?? fichaFarmacia?.condicionVenta ?? leerCampoFlexible(item, meta, ["condicion_venta", "CONDICION_VENTA", "condicionVenta"]) ?? "Venta Libre",
+    cadenaFrio: fichaAdonis ? Boolean(fichaAdonis.requiereFrio) : fichaFarmacia ? Boolean(fichaFarmacia.cadenaFrio) : parseBooleano(leerCampoFlexible(item, meta, ["cadena_frio", "CADENA_FRIO", "cadenaFrio"])),
+    lote: fichaAdonis?.lote ?? fichaFarmacia?.lote ?? leerCampoFlexible(item, meta, ["lote", "LOTE"]) ?? "",
+    fechaVencimiento: fichaAdonis?.fechaVencimiento ?? fichaFarmacia?.fechaVencimiento ?? leerCampoFlexible(item, meta, ["fecha_vencimiento", "FECHA_VENCIMIENTO", "fechaVencimiento"]) ?? "",
     modelo: meta.modelo || "",
     especificacionClave: meta.especificacionClave || "",
     voltaje: meta.voltaje || "110V",
@@ -1410,15 +1415,6 @@ export default function ComerciosProductosPage() {
       costo: Number(formData.costo) || 0,
       descripcion: formData.descripcion,
       nicho: formData.nicho,
-      principioActivo: formData.principioActivo,
-      concentracion: formData.concentracion,
-      presentacion: formData.presentacion,
-      laboratorio: formData.laboratorio,
-      registroSanitario: formData.registroSanitario,
-      condicionVenta: formData.condicionVenta,
-      cadenaFrio: formData.cadenaFrio,
-      lote: formData.lote,
-      fechaVencimiento: formData.fechaVencimiento,
       modelo: formData.modelo,
       especificacionClave: formData.especificacionClave,
       voltaje: formData.voltaje,
@@ -1436,6 +1432,25 @@ export default function ComerciosProductosPage() {
     metadata.price = fusionarPrecioMeta(metadataPrevia.price, Number(formData.price) || 0);
     if (Number(formData.promoPrice)) metadata.price.promoPrice = Number(formData.promoPrice);
     else if (metadata.price.promoPrice === undefined) metadata.price.promoPrice = 0;
+
+    // Esquema real confirmado contra el backend (2026-09-27, tienda 47, producto FD001-001): Adonis SÍ
+    // persiste la ficha técnica de farmacia, pero solo dentro de un objeto anidado metadata.farmacia — como
+    // claves sueltas en la raíz de metadata se descartan (ver diagnóstico anterior en este mismo archivo).
+    // El campo real se llama "requiereFrio", no "cadenaFrio" (ese sigue siendo solo el nombre interno del
+    // formulario/checkbox). Se fusiona sobre metadataPrevia.farmacia para no perder ninguna clave que Adonis
+    // ya tuviera ahí y que este formulario no conozca.
+    metadata.farmacia = {
+      ...metadataPrevia.farmacia,
+      principioActivo: formData.principioActivo,
+      concentracion: formData.concentracion,
+      presentacion: formData.presentacion,
+      laboratorio: formData.laboratorio,
+      registroSanitario: formData.registroSanitario,
+      condicionVenta: formData.condicionVenta,
+      lote: formData.lote,
+      fechaVencimiento: formData.fechaVencimiento,
+      requiereFrio: formData.cadenaFrio,
+    };
 
     // Disponibilidad de variantes (metadata.variants): viaja tal cual quedó en el formulario, con los switches
     // de encendido/apagado ya aplicados por handleToggleVarianteItem. Si el producto no traía variantes al
