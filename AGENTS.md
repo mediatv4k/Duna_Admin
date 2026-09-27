@@ -183,6 +183,31 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 #   el aviso aparece bajo la zona de carga, nunca en un modal aparte. No
 #   existen slots image1/image2 (no hay evidencia de que Adonis los soporte).
 #
+# - Toggle manual de estado de variantes en el modal de edición (2026-09-27):
+#   sección "Disponibilidad de Variantes", independiente del nicho (no
+#   confundir con "Variantes / Sabores", solo en Gastronomía & Heladería,
+#   que maneja nombre+stock en metadata.variantes con "e", español). Esta
+#   nueva sección lee metadata.variants (Adonis, inglés, grupos con items)
+#   desde metadataCrudo, clonado en formData.metadataVariants al abrir el
+#   modal (clonarVariantsAdonis, JSON.parse/stringify defensivo). Por cada
+#   item se renderiza su nombre (item.name/label/title/code) y un switch
+#   que solo alterna status ACTIVE/INACTIVE (handleToggleVarianteItem,
+#   actualización inmutable); sin campo de stock. Si el producto no trae
+#   variants, la sección no se renderiza (sin mensaje estático). Al guardar,
+#   handleGuardarProducto asigna metadata.variants = formData.metadataVariants
+#   (viaja completo en el PUT /product/:id, junto con el resto de metadata
+#   ya fusionada vía metadataCrudo). ADVERTENCIA: esto contradice el
+#   diagnóstico previo de esta bitácora ("Adonis sanitiza metadata.variants,
+#   siempre vuelve vacío") — no se ha confirmado contra el backend real cuál
+#   de los dos comportamientos es el actual; es posible que solo los
+#   productos creados vía batch v2 con hojas de variantes traigan datos
+#   reales aquí. Bug encontrado y corregido durante la implementación: el
+#   bloque quedó inicialmente anidado dentro del wrapper
+#   `{formData.nicho !== "General" && !esPerfilSimple && (...)}` ("Campos
+#   Dinámicos por Nicho"), por lo que nunca se mostraba con nicho "General"
+#   (el valor por defecto); se movió fuera de ese wrapper, como hermano
+#   independiente, antes del pie del formulario.
+#
 # - Verificación de esta rama: `npx eslint <archivo>` + `npm run build` en
 #   exit 0 (proyecto 100% JavaScript puro: sin tsconfig.json ni .ts/.tsx, por
 #   lo que `tsc --noEmit` no aplica y no se usa).

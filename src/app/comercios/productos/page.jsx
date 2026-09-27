@@ -368,9 +368,23 @@ const FORM_INICIAL = {
   variantes: [],
   areaDespacho: "Cocina",
   toppings: [],
+  // Disponibilidad de variantes reales de Adonis (metadata.variants: grupos con items), independiente del
+  // nicho y de "variantes" (sabores con stock, arriba): aquí solo se enciende/apaga cada opción, sin cantidades
+  metadataVariants: [],
   // Granel / Peso
   unidadMedida: "kg",
 };
+
+// Copia profunda defensiva de metadata.variants (llega de una respuesta JSON de Adonis, sin funciones/fechas/
+// referencias circulares): evita mutar productoEnEdicion.metadataCrudo mientras se editan los switches
+function clonarVariantsAdonis(variants) {
+  if (!Array.isArray(variants)) return [];
+  try {
+    return JSON.parse(JSON.stringify(variants));
+  } catch (e) {
+    return [];
+  }
+}
 
 function parseSabores(str) {
   if (!str) return [];
@@ -1274,6 +1288,7 @@ export default function ComerciosProductosPage() {
       price: precioReal,
       variantes: prod.variantes || [],
       toppings: prod.toppings || [],
+      metadataVariants: clonarVariantsAdonis(prod?.metadataCrudo?.variants),
     });
     setNuevoTopping({ nombre: "", precioExtra: "" });
     setModalAbierto(true);
@@ -1294,6 +1309,24 @@ export default function ComerciosProductosPage() {
     setFormData(prev => ({
       ...prev,
       variantes: prev.variantes.map((v, i) => i === idx ? { ...v, [campo]: valor } : v)
+    }));
+  };
+
+  // Enciende/apaga un ítem de un grupo de metadata.variants (real de Adonis). Solo altera "status" de ese
+  // ítem específico, de forma inmutable; no toca stock (este módulo no maneja cantidades por variante).
+  const handleToggleVarianteItem = (grupoIdx, itemIdx) => {
+    setFormData(prev => ({
+      ...prev,
+      metadataVariants: prev.metadataVariants.map((grupo, gi) => {
+        if (gi !== grupoIdx) return grupo;
+        return {
+          ...grupo,
+          items: (grupo.items || []).map((item, ii) => {
+            if (ii !== itemIdx) return item;
+            return { ...item, status: item.status === "INACTIVE" ? "ACTIVE" : "INACTIVE" };
+          }),
+        };
+      }),
     }));
   };
 
@@ -1402,6 +1435,11 @@ export default function ComerciosProductosPage() {
     metadata.price = fusionarPrecioMeta(metadataPrevia.price, Number(formData.price) || 0);
     if (Number(formData.promoPrice)) metadata.price.promoPrice = Number(formData.promoPrice);
     else if (metadata.price.promoPrice === undefined) metadata.price.promoPrice = 0;
+
+    // Disponibilidad de variantes (metadata.variants): viaja tal cual quedó en el formulario, con los switches
+    // de encendido/apagado ya aplicados por handleToggleVarianteItem. Si el producto no traía variantes al
+    // abrir el modal, esto es [] y no reemplaza nada que ya existiera (metadataPrevia no tenía variants ahí).
+    metadata.variants = formData.metadataVariants;
 
     const payload = { ...raiz, metadata, ...payloadTienda };
     // El backend exige la subcategoría bajo esta clave en snake_case en la raíz del payload
@@ -2276,6 +2314,41 @@ export default function ComerciosProductosPage() {
                       </select>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Independiente del nicho: metadata.variants es un concepto de Adonis, no del formulario por rubro */}
+              {formData.metadataVariants.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-600 block">Disponibilidad de Variantes</label>
+                  <p className="text-[11px] text-slate-400 -mt-1">Solo enciende o apaga cada opción; este panel no maneja cantidades de stock por variante.</p>
+                  <div className="space-y-2">
+                    {formData.metadataVariants.map((grupo, gi) => (
+                      <div key={gi} className="border border-slate-200 rounded-xl p-2.5 space-y-1.5">
+                        <p className="text-[11px] font-bold text-slate-700">{grupo.name || grupo.title || grupo.label || `Grupo ${gi + 1}`}</p>
+                        {(grupo.items || []).map((item, ii) => {
+                          const activo = item.status !== "INACTIVE";
+                          const nombreItem = item.name || item.label || item.title || item.code || `Opción ${ii + 1}`;
+                          return (
+                            <div key={ii} className="flex items-center justify-between gap-2 pl-1">
+                              <span className="text-xs text-slate-700 truncate">{nombreItem}</span>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={activo}
+                                aria-label={`${activo ? "Desactivar" : "Activar"} ${nombreItem}`}
+                                onClick={() => handleToggleVarianteItem(gi, ii)}
+                                title={activo ? "Disponible: clic para marcar agotado" : "Agotado: clic para reactivar"}
+                                className={`w-8 h-5 shrink-0 rounded-full relative transition-colors ${activo ? "bg-[#FE6712]" : "bg-slate-200"}`}
+                              >
+                                <span className={`w-4 h-4 bg-white rounded-full shadow-sm absolute top-[2px] transition-all ${activo ? "left-[14px]" : "left-[2px]"}`} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
