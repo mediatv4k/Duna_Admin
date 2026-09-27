@@ -194,6 +194,22 @@ async function subirImagenComercio(idUsuario, archivo, token, onProgreso) {
   throw ultimoError;
 }
 
+// Namespace del objeto anidado de metadata según el NICHO DEL PRODUCTO — nunca de la tienda: una misma
+// tienda mezcla nichos (confirmado con datos reales de la tienda 47, que junto a farmacia trae productos
+// "Alimentos y Bebidas" y "COSMETICOS"), así que un storeNiche a nivel de tienda sería incorrecto.
+// Solo "farmacia" está CONFIRMADO contra el backend real (producto FD001-001, tienda 47, 2026-09-27). Los
+// demás nichos no tienen hoy ningún grupo de campos extendidos análogo a los 9 de farmacia (Tecnología y
+// Gastronomía ya guardan lo suyo como claves sueltas de metadata, fuera de este mecanismo), así que no
+// hay nombre de namespace que inventar para ellos todavía — devuelve null a propósito en vez de un nombre
+// no verificado ("alimentos", "tecnologia", etc.), para no fabricar un contrato con Adonis que no existe.
+const NAMESPACES_POR_NICHO = {
+  "Farmacia & Salud": "farmacia",
+};
+
+function obtenerNamespacePorNicho(nicho) {
+  return NAMESPACES_POR_NICHO[nicho] || null;
+}
+
 // Precio V2 preservando lo que ya trajo Adonis (promoPrice y cualquier otra clave de metadata.price): solo se
 // fija basePrice, e infoPrice lo acompaña mientras estuviera alineado con el basePrice anterior (o ausente).
 function fusionarPrecioMeta(precioPrevio, nuevoBase) {
@@ -283,11 +299,13 @@ function guardarFichasFarmaciaLocalMasivo(storeId, entradas) {
 function mapearProductoComercio(item, idx, storeId) {
   const meta = item.metadata || {};
   const codigoProducto = String(item.code || item.codigo || item.sku || item.id || "").trim().toUpperCase();
-  // Esquema real confirmado contra el backend (2026-09-27): Adonis persiste la ficha de farmacia en
-  // metadata.farmacia (objeto anidado; el booleano real se llama "requiereFrio"). Es la fuente de verdad
-  // cuando existe; localStorage queda como respaldo para productos que aún no se han vuelto a guardar
-  // con el esquema nuevo (ver handleGuardarProducto).
-  const fichaAdonis = meta.farmacia || null;
+  // Esquema real confirmado contra el backend (2026-09-27): Adonis persiste la ficha de farmacia en un
+  // objeto anidado (el booleano real se llama "requiereFrio"). El namespace es dinámico según el NICHO
+  // DEL PRODUCTO (obtenerNamespacePorNicho), no de la tienda — ver el porqué junto a esa función. Es la
+  // fuente de verdad cuando existe; localStorage queda como respaldo para productos que aún no se han
+  // vuelto a guardar con el esquema nuevo (ver handleGuardarProducto).
+  const namespaceFarmacia = obtenerNamespacePorNicho(meta.nicho || "General");
+  const fichaAdonis = (namespaceFarmacia && meta[namespaceFarmacia]) || null;
   const fichaFarmacia = leerFichasFarmaciaLocal(storeId)[codigoProducto] || null;
   if (idx === 0) {
     console.log("--> ITEM CRUDO DESDE ADONIS:", item.codigo, item.metadata || item.meta || item);
@@ -1434,23 +1452,30 @@ export default function ComerciosProductosPage() {
     else if (metadata.price.promoPrice === undefined) metadata.price.promoPrice = 0;
 
     // Esquema real confirmado contra el backend (2026-09-27, tienda 47, producto FD001-001): Adonis SÍ
-    // persiste la ficha técnica de farmacia, pero solo dentro de un objeto anidado metadata.farmacia — como
-    // claves sueltas en la raíz de metadata se descartan (ver diagnóstico anterior en este mismo archivo).
-    // El campo real se llama "requiereFrio", no "cadenaFrio" (ese sigue siendo solo el nombre interno del
-    // formulario/checkbox). Se fusiona sobre metadataPrevia.farmacia para no perder ninguna clave que Adonis
-    // ya tuviera ahí y que este formulario no conozca.
-    metadata.farmacia = {
-      ...metadataPrevia.farmacia,
-      principioActivo: formData.principioActivo,
-      concentracion: formData.concentracion,
-      presentacion: formData.presentacion,
-      laboratorio: formData.laboratorio,
-      registroSanitario: formData.registroSanitario,
-      condicionVenta: formData.condicionVenta,
-      lote: formData.lote,
-      fechaVencimiento: formData.fechaVencimiento,
-      requiereFrio: formData.cadenaFrio,
-    };
+    // persiste la ficha técnica de farmacia, pero solo dentro de un objeto anidado — como claves sueltas en
+    // la raíz de metadata se descartan (ver diagnóstico anterior en este mismo archivo). El nombre de ese
+    // objeto es dinámico según el NICHO DEL PRODUCTO (obtenerNamespacePorNicho), nunca hardcodeado ni atado
+    // a la tienda: así un producto de Farmacia y uno de Gastronomía en la misma tienda nunca comparten
+    // namespace ("no mezclar helados con medicinas"). El campo real se llama "requiereFrio", no "cadenaFrio"
+    // (ese sigue siendo solo el nombre interno del formulario/checkbox). Se fusiona sobre
+    // metadataPrevia[namespace] para no perder ninguna clave que Adonis ya tuviera ahí y que este formulario
+    // no conozca. Fuera del nicho Farmacia no se escribe nada aquí: no hay namespace confirmado para los
+    // demás nichos, y estos 9 campos no tienen sentido para un producto de otro rubro.
+    const namespace = obtenerNamespacePorNicho(formData.nicho);
+    if (namespace) {
+      metadata[namespace] = {
+        ...metadataPrevia[namespace],
+        principioActivo: formData.principioActivo,
+        concentracion: formData.concentracion,
+        presentacion: formData.presentacion,
+        laboratorio: formData.laboratorio,
+        registroSanitario: formData.registroSanitario,
+        condicionVenta: formData.condicionVenta,
+        lote: formData.lote,
+        fechaVencimiento: formData.fechaVencimiento,
+        requiereFrio: formData.cadenaFrio,
+      };
+    }
 
     // Disponibilidad de variantes (metadata.variants): viaja tal cual quedó en el formulario, con los switches
     // de encendido/apagado ya aplicados por handleToggleVarianteItem. Si el producto no traía variantes al
