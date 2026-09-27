@@ -91,6 +91,23 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 #   /store/:storeId/payment/info, /store, /user/:user/image/upload. PROHIBIDO
 #   tocar endpoints v1 legados de Excel.
 #
+# - CORRECCIÓN CRÍTICA (2026-09-27) — Migración de exportación plana a
+#   /download/v2: el botón "Exportar Excel" generaba localmente (vía XLSX)
+#   un archivo de 1 sola pestaña. Adonis v2 espera 11 pestañas para
+#   estructurar sabores/variantes; si ese Excel plano se reimportaba por el
+#   batch v2, el backend interpretaba que la tienda no tiene variantes y
+#   borraba Product.metadata.variants en producción (pérdida de datos real).
+#   handleExportExcel ya NO genera el archivo en el cliente: descarga el
+#   Excel oficial del core, GET /store/:storeId/products/download/v2
+#   (headers apiKey + Authorization: Bearer <iac_store>), respuesta binaria
+#   vía .blob() + URL.createObjectURL + <a> temporal, nombre
+#   `productos_${storeId}.xlsx`. Sin alert(): un fallo (HTTP no-2xx o red)
+#   se muestra en un banner inline (mismo patrón que errorEdicionRapida),
+#   con spinner en el botón mientras descarga. serializarSabores/
+#   serializarToppings quedaron sin uso (ya no las llama nadie) pero no se
+#   tocaron: solo servían a la lógica eliminada y removerlas era un cambio
+#   fuera del alcance de esta corrección.
+#
 # - FASE 1 — Importación Excel batch v2 (src/app/comercios/productos/page.jsx,
 #   src/lib/commerceServices.js): subirExcelBatchComercio acepta
 #   { dryRun } como cuarto parámetro; dryRun viaja SOLO como query param

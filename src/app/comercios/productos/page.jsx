@@ -919,6 +919,8 @@ export default function ComerciosProductosPage() {
   const [errorTiendas, setErrorTiendas] = useState("");
   const [recargaTiendas, setRecargaTiendas] = useState(0);
   const [importando, setImportando] = useState(false);
+  const [exportando, setExportando] = useState(false);
+  const [errorExportacion, setErrorExportacion] = useState("");
   // Subida de imágenes del modal: el usuario dueño del token (no la tienda) es el que va en la ruta del upload
   const idUsuarioSubida = comercio?.userId ?? comercio?.user?.id ?? comercio?.id ?? null;
   const [subiendoImagen, setSubiendoImagen] = useState(false);
@@ -1139,97 +1141,48 @@ export default function ComerciosProductosPage() {
     }
   };
 
-  const handleExportExcel = () => {
-    const dataToExport = productos.length > 0 ? productos.map(p => ({
-      CODIGO: p.code,
-      CATEGORIA: p.categoria,
-      "Categoría Interna": p.subcategoria || "",
-      NOMBRE: p.name,
-      DESCRIPCION: p.descripcion || "",
-      CANTIDAD: p.stock,
-      MINIMO: p.minimo || 1,
-      MAXIMO: p.maximo || 0,
-      IMAGEN: p.image,
-      STATUS: p.status || "ACTIVE",
-      "PRECIO BASE": p.price,
-      "PRECIO INFO": p.precioInfo || p.price,
-      "PRECIO PROMO": p.precioPromo || 0,
-      "LABEL PROMO": p.labelPromo || "",
-      "NOTA PROMO": p.notaPromo || "",
-      ORDEN: p.orden || 0,
-      PESO: p.peso || 0,
-      VOLUMEN: p.volumen || 0,
-      NICHO: p.nicho || "General",
-      COSTO: p.costo || 0,
-      BARCODE: p.barcode || "",
-      MARCA: p.marca || "",
-      PRINCIPIO_ACTIVO: p.principioActivo || "",
-      CONCENTRACION: p.concentracion || "",
-      PRESENTACION: p.presentacion || "",
-      LABORATORIO: p.laboratorio || "",
-      REGISTRO_SANITARIO: p.registroSanitario || "",
-      CONDICION_VENTA: p.condicionVenta || "",
-      CADENA_FRIO: p.cadenaFrio ? "SI" : "NO",
-      LOTE: p.lote || "",
-      FECHA_VENCIMIENTO: p.fechaVencimiento || "",
-      MODELO: p.modelo || "",
-      ESPECIFICACION_CLAVE: p.especificacionClave || "",
-      VOLTAJE: p.voltaje || "",
-      CONDICION: p.condicion || "",
-      MESES_GARANTIA: p.mesesGarantia || 0,
-      SABORES: serializarSabores(p.variantes),
-      AREA_DESPACHO: p.areaDespacho || "",
-      TOPPINGS_MODIFICADORES: serializarToppings(p.toppings),
-      UNIDAD_MEDIDA: p.unidadMedida || "",
-    })) : [
-      {
-        CODIGO: "P001",
-        CATEGORIA: "General",
-        "Categoría Interna": "",
-        NOMBRE: "Producto Ejemplo",
-        DESCRIPCION: "Descripción oficial del producto",
-        CANTIDAD: 20,
-        MINIMO: 1,
-        MAXIMO: 0,
-        IMAGEN: "",
-        STATUS: "ACTIVE",
-        "PRECIO BASE": 5.00,
-        "PRECIO INFO": 5.00,
-        "PRECIO PROMO": 0,
-        "LABEL PROMO": "",
-        "NOTA PROMO": "",
-        ORDEN: 0,
-        PESO: 0,
-        VOLUMEN: 0,
-        NICHO: "General",
-        COSTO: 0,
-        BARCODE: "",
-        MARCA: "",
-        PRINCIPIO_ACTIVO: "",
-        CONCENTRACION: "",
-        PRESENTACION: "",
-        LABORATORIO: "",
-        REGISTRO_SANITARIO: "",
-        CONDICION_VENTA: "",
-        CADENA_FRIO: "NO",
-        LOTE: "",
-        FECHA_VENCIMIENTO: "",
-        MODELO: "",
-        ESPECIFICACION_CLAVE: "",
-        VOLTAJE: "",
-        CONDICION: "",
-        MESES_GARANTIA: 0,
-        SABORES: "",
-        AREA_DESPACHO: "",
-        TOPPINGS_MODIFICADORES: "",
-        UNIDAD_MEDIDA: "",
+  // El Excel plano de un solo tab (generado antes localmente con XLSX) no trae las 11 pestañas que Adonis v2
+  // espera para sabores/variantes: si ese archivo se reimportaba vía batch v2, el backend interpretaba que la
+  // tienda no tiene variantes y borraba Product.metadata.variants en producción. Se reemplaza por una descarga
+  // directa del Excel oficial que el propio core genera (ya con las 11 pestañas correctas).
+  const handleExportExcel = async () => {
+    if (!token || !storeId) {
+      setErrorExportacion("No se puede exportar: tu sesión expiró o no tiene una tienda asociada.");
+      return;
+    }
+    setErrorExportacion("");
+    setExportando(true);
+    try {
+      const res = await fetch(`${ADONIS_BASE}/store/${storeId}/products/download/v2`, {
+        method: "GET",
+        headers: { apiKey: ADONIS_API_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        // Adonis responde JSON en error y binario (xlsx) en éxito
+        let mensaje = `Adonis respondió HTTP ${res.status} al generar el Excel.`;
+        try {
+          const datos = await res.json();
+          mensaje = (typeof datos?.message === "object" ? JSON.stringify(datos.message) : datos?.message) || mensaje;
+        } catch (e) {
+          // sin cuerpo JSON legible: se conserva el mensaje genérico con el status
+        }
+        throw new Error(mensaje);
       }
-    ];
-
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Productos");
-    XLSX.writeFile(wb, "Productos_Comercio.xlsx");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = `productos_${storeId}.xlsx`;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      setErrorExportacion(err.message || "No se pudo generar el Excel desde Adonis.");
+    } finally {
+      setExportando(false);
+    }
   };
 
   const handleExportMarketplace = () => {
@@ -1669,11 +1622,12 @@ export default function ComerciosProductosPage() {
             </button>
             <button
               onClick={handleExportExcel}
+              disabled={exportando}
               title="Exportar Excel"
               aria-label="Exportar Excel"
-              className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-sm"
+              className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-sm disabled:opacity-60"
             >
-              <Download className="w-4 h-4 text-slate-500" />
+              {exportando ? <Loader2 className="w-4 h-4 text-slate-500 animate-spin" /> : <Download className="w-4 h-4 text-slate-500" />}
               <span className="sr-only">Exportar Excel</span>
             </button>
             <button
@@ -1746,6 +1700,15 @@ export default function ComerciosProductosPage() {
           <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
             <span>{errorEdicionRapida}</span>
             <button type="button" onClick={() => setErrorEdicionRapida("")} aria-label="Cerrar aviso" className="shrink-0 text-rose-500 hover:text-rose-700">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {errorExportacion && (
+          <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
+            <span>No se pudo exportar el Excel: {errorExportacion}</span>
+            <button type="button" onClick={() => setErrorExportacion("")} aria-label="Cerrar aviso" className="shrink-0 text-rose-500 hover:text-rose-700">
               <X className="w-4 h-4" />
             </button>
           </div>
