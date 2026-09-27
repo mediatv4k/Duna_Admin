@@ -260,3 +260,86 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 #   completo), las 4 vistas, el filtro de fechas recalculando en vivo, y el
 #   caso sin variantes. `npx eslint` y `npm run build` en exit 0.
 # ==============================================================================
+
+# ==============================================================================
+## CONTROL DE MOSTRADOR, CIERRE DE CAJA Y RBAC (2026-09-27)
+# ==============================================================================
+# - El encargo citaba `modulo-productos-comercio.md` como fuente de los endpoints;
+#   ese archivo NO existe en este repositorio (se buscó en todo el árbol antes de
+#   empezar). Se procedió igual porque los dos endpoints pedidos ya estaban
+#   verificados y en uso en comercios/productos/page.jsx (GET .../products/all y
+#   PUT /product/:id) — no se inventó ningún contrato nuevo.
+#
+# - CONTROL DE MOSTRADOR (src/app/comercios/mostrador/page.jsx) — REAL, conectado:
+#   * Lectura: GET /store/:storeId/products/all?query=&page=1 (paginado por
+#     meta.last_page, misma convención que cargarCatalogoComercio). Archivo
+#     autocontenido (no importa funciones internas de productos/page.jsx, misma
+#     convención de duplicación deliberada que ya existe entre inventario/ y
+#     comercios/productos/ para no romper Regla de Oro §1/§4 refactorizando un
+#     archivo ajeno a esta tarea).
+#   * UI: nombre, precio y un switch grande de disponibilidad por producto. Si
+#     el producto trae metadata.variants, aparece una flecha para expandir la
+#     fila y ver un switch por cada item de cada grupo. Sin costos, sin modales.
+#   * Escritura — switch de producto completo: PUT /product/:id con el payload
+#     MÍNIMO exacto pedido, `{ id, status }` (no se reconstruye el producto
+#     completo aquí, a diferencia de comercios/productos/page.jsx).
+#   * Escritura — switch de una variante: PUT /product/:id con
+#     `{ id, metadata }`, donde `metadata` es la metadata COMPLETA original del
+#     producto (weight, price, etc.) con solo `variants` reemplazado — nunca se
+#     manda `{ variants: [...] }` suelto, para no repetir el bug de pérdida de
+#     datos ya documentado arriba (sección PORTAL DE COMERCIOS). Verificado en
+#     el navegador con Adonis simulado: el PUT de una variante conservó
+#     `weight` y `price` intactos, cambiando solo el status del item tocado.
+#   * Actualización optimista con reversión si Adonis rechaza, mismo patrón de
+#     indicador por fila (spinner/check/error) que la edición rápida del Kardex.
+#
+# - CIERRE DE CAJA (src/app/comercios/cierre-caja/page.jsx) — DEMO, misma
+#   decisión que /reportes: no existe endpoint de Adonis para listar los
+#   cobros/pedidos de un turno (solo hay uno para CREAR un pedido). Punto único
+#   de conexión futura: cargarCierreCajaDemo() al inicio del archivo. Etiqueta
+#   ámbar "DEMO" visible en el header y aviso explícito en el cuerpo. Estructura:
+#   Gran Total Facturado del Día, desglose por 6 métodos de pago exactos (Zelle,
+#   Binance, Pago Móvil - Banesco, Pago Móvil - Provincial, Efectivo, Monedero)
+#   y desglose Delivery vs. Pick-up. Matemática verificada a mano contra los
+#   datos de ejemplo (Total $147.00 = suma de los 7 cobros).
+#
+# - RBAC (src/lib/commerceServices.js: esVendedorComercio; src/components/
+#   comercios/MenuComercio.jsx): no hay ningún campo de rol confirmado en la
+#   respuesta real de GET /user/login (ud_store) — se prueban varias grafías
+#   (rol/role/tipo/perfil/cargo) contra una lista de valores tipo admin
+#   (ADMIN, DUEÑO, OWNER, SUPERADMIN, GERENTE). DECISIÓN DELIBERADA: si no hay
+#   ningún campo de rol en ud_store, se asume ADMIN/DUEÑO (no se restringe por
+#   defecto), para no romper el acceso de los usuarios reales de hoy — que ya
+#   usan el portal completo sin ningún campo de rol. La restricción solo se
+#   activa si el backend marca explícitamente a alguien como vendedor/cajero.
+#   * MenuComercio: nav ligera (sin sidebar/aside — no existía ninguno en el
+#     portal; se optó por una barra horizontal bajo el header, consistente con
+#     "UI Ligera" y con que el portal nunca ha tenido un menú lateral clásico).
+#     ADMIN ve Kardex/Mostrador/Reportes/Cierre de Caja; VENDEDOR ve Control de
+#     Mostrador/Pedidos/Cierre de Caja. "Pedidos" no enlaza a ningún lado
+#     (span deshabilitado, título "Aún no implementado"): no existe ninguna
+#     vista de gestión de pedidos en este repo y no se fabricó una en esta
+#     tarea. Ocultar un enlace aquí es solo ayuda visual, no seguridad.
+#   * La restricción real (por si alguien escribe la URL directo) vive en cada
+#     página: comercios/productos/page.jsx gana una guardia
+#     `if (esVendedorComercio(comercio)) return <AccesoRestringido />` antes de
+#     renderizar cualquier dato de costos/Excel (único cambio agregado a ese
+#     archivo para esta tarea, además del `<MenuComercio activo="kardex" />`
+#     bajo su header). mostrador/page.jsx y cierre-caja/page.jsx no restringen
+#     por rol (ambos roles los usan). /reportes ya tenía su propio gateo
+#     (useAuth().isAdmin, sesión del ERP interno — Firebase/AuthContext, NO
+#     iac_store/ud_store): el enlace "Reportes" del menú apunta ahí, pero un
+#     comercio sin sesión abierta en el ERP interno verá el login de ESE
+#     sistema, no este portal, al hacer clic — las dos sesiones son
+#     independientes a propósito (aislamiento del portal, ver arriba) y esta
+#     tarea no las unificó.
+#
+# - Verificado en el navegador con Adonis simulado: la URL de lectura salió
+#   exactamente `/store/47/products/all?query=&page=1`; el payload del switch
+#   de producto salió exactamente `{id, status}`; el de una variante conservó
+#   el resto de la metadata; un producto sin variantes no muestra flecha de
+#   expandir; con rol "VENDEDOR" el Kardex mostró "Acceso restringido" y el
+#   Mostrador siguió accesible, cada uno con el menú correcto para su rol.
+# - `npx eslint` y `npm run build` en exit 0 (proyecto 100% JavaScript puro:
+#   sin tsconfig.json ni .ts/.tsx, `tsc --noEmit` no aplica).
+# ==============================================================================

@@ -27,6 +27,19 @@ export function cerrarSesionComercio() {
   localStorage.removeItem(USER_STORAGE_KEY);
 }
 
+// Ningún campo de rol confirmado en la respuesta real de GET /user/login (ud_store): se prueban varias
+// grafías posibles. Si no hay ninguna señal de rol, se asume ADMIN/DUEÑO — no restringir por defecto —
+// para no romper el acceso de los usuarios reales de hoy, que ya usan el portal completo sin ningún
+// campo de rol. La restricción solo se activa si el backend marca explícitamente a alguien como
+// vendedor/cajero.
+const VALORES_ROL_ADMIN = ["ADMIN", "DUEÑO", "DUENO", "OWNER", "SUPERADMIN", "GERENTE"];
+
+export function esVendedorComercio(usuario) {
+  const crudo = String(usuario?.rol || usuario?.role || usuario?.tipo || usuario?.perfil || usuario?.cargo || "").trim().toUpperCase();
+  if (!crudo) return false;
+  return !VALORES_ROL_ADMIN.some((v) => crudo.includes(v));
+}
+
 /**
  * POST /user/token — intercambia usuario/clave por un token de acceso y lo persiste en "iac_store".
  */
