@@ -42,15 +42,13 @@ async function cargarProductosMostrador(storeId, token, signal) {
   return items;
 }
 
-// Esquema ligero: solo lo que pide esta vista. Se conserva metadataCompleta cruda (no solo "variants")
-// para que, al apagar/prender un sabor, el PUT no pise weight/volume/price ni ninguna otra clave.
 function mapearProductoMostrador(item) {
   const meta = item?.metadata || {};
   return {
     id: item.id,
     code: String(item.code || item.sku || item.id || ""),
     name: item.name || "Sin Nombre",
-    price: Number(meta.price?.basePrice ?? item.price) || 0,
+    price: Number(meta.price?.basePrice ?? meta.price?.promoPrice ?? item.price) || 0,
     status: item.status || "ACTIVE",
     metadataCompleta: meta,
   };
@@ -275,14 +273,18 @@ export default function MostradorComercioPage() {
                             <p className="text-[11px] font-bold text-slate-700">{grupo.name || grupo.title || `Grupo ${gi + 1}`}</p>
                             {(grupo.items || []).map((item, ii) => {
                               const activo = item.status !== "INACTIVE";
-                              const nombreReal = item.title || item.name || item.nombre || item.descripcion || item.label || "";
+                              const nombreReal = item.name || item.title || item.label || "";
                               const codigoReal = item.code || item.sku || "";
                               
-                              let nombreItem = nombreReal;
+                              let nombreItem = "";
                               if (nombreReal && codigoReal && !nombreReal.includes(codigoReal)) {
                                 nombreItem = `${nombreReal} (${codigoReal})`;
-                              } else if (!nombreReal) {
-                                nombreItem = codigoReal || `Opción ${ii + 1}`;
+                              } else if (nombreReal) {
+                                nombreItem = nombreReal;
+                              } else if (codigoReal) {
+                                nombreItem = codigoReal;
+                              } else {
+                                nombreItem = `Opción ${ii + 1}`;
                               }
 
                               return (
