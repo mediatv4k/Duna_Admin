@@ -275,10 +275,19 @@ export default function MostradorComercioPage() {
                             <p className="text-[11px] font-bold text-slate-700">{grupo.name || grupo.title || `Grupo ${gi + 1}`}</p>
                             {(grupo.items || []).map((item, ii) => {
                               const activo = item.status !== "INACTIVE";
-                              const nombreItem = item.name || item.label || item.code || `Opción ${ii + 1}`;
+                              const nombreReal = item.title || item.name || item.nombre || item.descripcion || item.label || "";
+                              const codigoReal = item.code || item.sku || "";
+                              
+                              let nombreItem = nombreReal;
+                              if (nombreReal && codigoReal && !nombreReal.includes(codigoReal)) {
+                                nombreItem = `${nombreReal} (${codigoReal})`;
+                              } else if (!nombreReal) {
+                                nombreItem = codigoReal || `Opción ${ii + 1}`;
+                              }
+
                               return (
                                 <div key={ii} className="flex items-center justify-between gap-2 pl-1">
-                                  <span className="text-xs text-slate-700 truncate">{nombreItem}</span>
+                                  <span className="text-xs text-slate-700 truncate" title={nombreItem}>{nombreItem}</span>
                                   <button
                                     type="button"
                                     role="switch"
