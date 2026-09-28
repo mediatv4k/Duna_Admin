@@ -51,6 +51,7 @@ function mapearProductoMostrador(item) {
     price: Number(item.metadata?.price?.basePrice || item.metadata?.price?.infoPrice || item.metadata?.price?.promoPrice || item.price || 0),
     status: item.status || "ACTIVE",
     metadataCompleta: meta,
+    metadata: item.metadata,
   };
 }
 
