@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -18,8 +18,8 @@ import SidebarTienda from "@/components/comercios/SidebarTienda";
 const NICHOS = [
   "General",
   "Farmacia & Salud",
-  "Tecnología & Hogar",
-  "Gastronomía & Heladería",
+  "TecnologÃ­a & Hogar",
+  "GastronomÃ­a & HeladerÃ­a",
   "Granel / Peso",
   "Supermercado / Hipermercado & Licores",
 ];
@@ -52,14 +52,14 @@ async function pedirJsonComercio(url, token, opciones = {}) {
   if (!res.ok || !datos || datos.code !== 1) {
     const errMsg = typeof datos?.message === "object"
       ? JSON.stringify(datos.message)
-      : (datos?.message || `Adonis respondió HTTP ${res.status}`);
+      : (datos?.message || `Adonis respondiÃ³ HTTP ${res.status}`);
     throw new Error(errMsg);
   }
   return datos;
 }
 
-// PUT /product/:id con el token del comercio (iac_store). Envía solo el id y los campos que cambian
-// (misma convención que la baja lógica); lo usa la edición rápida en la tabla.
+// PUT /product/:id con el token del comercio (iac_store). EnvÃ­a solo el id y los campos que cambian
+// (misma convenciÃ³n que la baja lÃ³gica); lo usa la ediciÃ³n rÃ¡pida en la tabla.
 async function actualizarProductoComercio(adonisId, cambios, token) {
   return pedirJsonComercio(`${ADONIS_BASE}/product/${adonisId}`, token, {
     method: "PUT",
@@ -68,11 +68,11 @@ async function actualizarProductoComercio(adonisId, cambios, token) {
 }
 
 // GET /store: lista de comercios para el selector Master. Verificado contra el backend real (2026-09-27): con
-// SOLO apiKey responde 401 "E_INVALID_API_TOKEN" (idéntico con apiKey ausente, inválida, o con un Bearer
-// inventado) — a diferencia de /store/:id/payment/info, que sí es público solo con apiKey y devuelve 200. Por
-// eso este endpoint también envía el Bearer de la sesión; no se pudo confirmar con un token real de comercio si
+// SOLO apiKey responde 401 "E_INVALID_API_TOKEN" (idÃ©ntico con apiKey ausente, invÃ¡lida, o con un Bearer
+// inventado) â€” a diferencia de /store/:id/payment/info, que sÃ­ es pÃºblico solo con apiKey y devuelve 200. Por
+// eso este endpoint tambiÃ©n envÃ­a el Bearer de la sesiÃ³n; no se pudo confirmar con un token real de comercio si
 // basta para listar TODAS las tiendas o si requiere un rol master aparte. La forma exacta de la respuesta con
-// 200 tampoco está confirmada, así que se busca el arreglo en las envolturas habituales, se soporta paginación
+// 200 tampoco estÃ¡ confirmada, asÃ­ que se busca el arreglo en las envolturas habituales, se soporta paginaciÃ³n
 // si viene meta.last_page, y de cada comercio solo se mapea id (o _id) y nombre (name o nombre).
 async function cargarTiendasComercio(token, signal) {
   const pedirPagina = async (pagina) => {
@@ -88,7 +88,7 @@ async function cargarTiendasComercio(token, signal) {
     }
     if (!res.ok || !datos || (datos.code !== undefined && datos.code !== 1)) {
       const mensaje = typeof datos?.message === "object" ? JSON.stringify(datos.message) : datos?.message;
-      throw new Error(mensaje || `Adonis respondió HTTP ${res.status} al listar las tiendas.`);
+      throw new Error(mensaje || `Adonis respondiÃ³ HTTP ${res.status} al listar las tiendas.`);
     }
     return datos;
   };
@@ -113,10 +113,10 @@ async function cargarTiendasComercio(token, signal) {
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
 }
 
-// --- Subida de imágenes (POST /user/:user/image/upload, multipart/form-data) ---
+// --- Subida de imÃ¡genes (POST /user/:user/image/upload, multipart/form-data) ---
 const TIPOS_IMAGEN_PERMITIDOS = ["image/png", "image/jpeg", "image/webp"];
 const MAX_IMAGEN_MB = 10;
-// El nombre del campo multipart no está confirmado: se prueba "file" y luego "image", y se recuerda el que acepte
+// El nombre del campo multipart no estÃ¡ confirmado: se prueba "file" y luego "image", y se recuerda el que acepte
 const CAMPOS_ARCHIVO_IMAGEN = ["file", "image"];
 let campoImagenConfirmado = null;
 
@@ -125,12 +125,12 @@ function validarArchivoImagen(archivo) {
     return `Formato no permitido (${archivo.type || "desconocido"}). Usa PNG, JPG o WEBP.`;
   }
   if (archivo.size > MAX_IMAGEN_MB * 1024 * 1024) {
-    return `La imagen pesa ${(archivo.size / (1024 * 1024)).toFixed(1)} MB y el máximo es ${MAX_IMAGEN_MB} MB.`;
+    return `La imagen pesa ${(archivo.size / (1024 * 1024)).toFixed(1)} MB y el mÃ¡ximo es ${MAX_IMAGEN_MB} MB.`;
   }
   return "";
 }
 
-// La forma de la respuesta no está confirmada: se busca la URL pública en los campos habituales
+// La forma de la respuesta no estÃ¡ confirmada: se busca la URL pÃºblica en los campos habituales
 function extraerUrlImagen(datos) {
   const d = datos?.data;
   const candidatos = [d, d?.url, d?.imageUrl, d?.image_url, d?.image, d?.location, d?.path, datos?.url, datos?.imageUrl, datos?.image];
@@ -144,7 +144,7 @@ function extraerUrlImagen(datos) {
   return "";
 }
 
-// fetch no expone el avance de una subida: XMLHttpRequest sí. No se fija Content-Type (el navegador pone el boundary).
+// fetch no expone el avance de una subida: XMLHttpRequest sÃ­. No se fija Content-Type (el navegador pone el boundary).
 function enviarMultipartConProgreso(url, formData, token, onProgreso) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -164,14 +164,14 @@ function enviarMultipartConProgreso(url, formData, token, onProgreso) {
       }
       resolve({ status: xhr.status, ok: xhr.status >= 200 && xhr.status < 300, datos });
     };
-    xhr.onerror = () => reject(new Error("No hubo conexión con el servidor al subir la imagen."));
-    xhr.ontimeout = () => reject(new Error("La subida tardó demasiado y se canceló. Revisa tu conexión e intenta de nuevo."));
+    xhr.onerror = () => reject(new Error("No hubo conexiÃ³n con el servidor al subir la imagen."));
+    xhr.ontimeout = () => reject(new Error("La subida tardÃ³ demasiado y se cancelÃ³. Revisa tu conexiÃ³n e intenta de nuevo."));
     xhr.send(formData);
   });
 }
 
-// Sube la imagen y devuelve su URL pública. Solo se reintenta con otro nombre de campo si el servidor rechazó la
-// validación (400/422); un 401, 403 o 5xx corta de inmediato con el mensaje real del servidor.
+// Sube la imagen y devuelve su URL pÃºblica. Solo se reintenta con otro nombre de campo si el servidor rechazÃ³ la
+// validaciÃ³n (400/422); un 401, 403 o 5xx corta de inmediato con el mensaje real del servidor.
 async function subirImagenComercio(idUsuario, archivo, token, onProgreso) {
   const url = `${ADONIS_BASE}/user/${encodeURIComponent(idUsuario)}/image/upload`;
   const candidatos = campoImagenConfirmado ? [campoImagenConfirmado] : CAMPOS_ARCHIVO_IMAGEN;
@@ -183,26 +183,26 @@ async function subirImagenComercio(idUsuario, archivo, token, onProgreso) {
     if (ok && datos && (datos.code === undefined || datos.code === 1)) {
       const urlPublica = extraerUrlImagen(datos);
       if (!urlPublica) {
-        throw new Error(`El servidor aceptó la imagen pero no devolvió una URL reconocible. Respuesta: ${JSON.stringify(datos).slice(0, 200)}`);
+        throw new Error(`El servidor aceptÃ³ la imagen pero no devolviÃ³ una URL reconocible. Respuesta: ${JSON.stringify(datos).slice(0, 200)}`);
       }
       campoImagenConfirmado = campo;
       return urlPublica;
     }
     const detalle = typeof datos?.message === "object" ? JSON.stringify(datos.message) : datos?.message;
-    ultimoError = new Error(detalle || `Adonis respondió HTTP ${status} al subir la imagen.`);
+    ultimoError = new Error(detalle || `Adonis respondiÃ³ HTTP ${status} al subir la imagen.`);
     if (status !== 400 && status !== 422) break;
   }
-  if (candidatos.length > 1) ultimoError.message += ` (se probó con los campos: ${candidatos.join(", ")})`;
+  if (candidatos.length > 1) ultimoError.message += ` (se probÃ³ con los campos: ${candidatos.join(", ")})`;
   throw ultimoError;
 }
 
-// Namespace del objeto anidado de metadata según el NICHO DEL PRODUCTO — nunca de la tienda: una misma
+// Namespace del objeto anidado de metadata segÃºn el NICHO DEL PRODUCTO â€” nunca de la tienda: una misma
 // tienda mezcla nichos (confirmado con datos reales de la tienda 47, que junto a farmacia trae productos
-// "Alimentos y Bebidas" y "COSMETICOS"), así que un storeNiche a nivel de tienda sería incorrecto.
-// Solo "farmacia" está CONFIRMADO contra el backend real (producto FD001-001, tienda 47, 2026-09-27). Los
-// demás nichos no tienen hoy ningún grupo de campos extendidos análogo a los 9 de farmacia (Tecnología y
-// Gastronomía ya guardan lo suyo como claves sueltas de metadata, fuera de este mecanismo), así que no
-// hay nombre de namespace que inventar para ellos todavía — devuelve null a propósito en vez de un nombre
+// "Alimentos y Bebidas" y "COSMETICOS"), asÃ­ que un storeNiche a nivel de tienda serÃ­a incorrecto.
+// Solo "farmacia" estÃ¡ CONFIRMADO contra el backend real (producto FD001-001, tienda 47, 2026-09-27). Los
+// demÃ¡s nichos no tienen hoy ningÃºn grupo de campos extendidos anÃ¡logo a los 9 de farmacia (TecnologÃ­a y
+// GastronomÃ­a ya guardan lo suyo como claves sueltas de metadata, fuera de este mecanismo), asÃ­ que no
+// hay nombre de namespace que inventar para ellos todavÃ­a â€” devuelve null a propÃ³sito en vez de un nombre
 // no verificado ("alimentos", "tecnologia", etc.), para no fabricar un contrato con Adonis que no existe.
 const NAMESPACES_POR_NICHO = {
   "Farmacia & Salud": "farmacia",
@@ -213,7 +213,7 @@ function obtenerNamespacePorNicho(nicho) {
 }
 
 // Precio V2 preservando lo que ya trajo Adonis (promoPrice y cualquier otra clave de metadata.price): solo se
-// fija basePrice, e infoPrice lo acompaña mientras estuviera alineado con el basePrice anterior (o ausente).
+// fija basePrice, e infoPrice lo acompaÃ±a mientras estuviera alineado con el basePrice anterior (o ausente).
 function fusionarPrecioMeta(precioPrevio, nuevoBase) {
   const previo = precioPrevio || {};
   const precioMeta = { ...previo, basePrice: nuevoBase };
@@ -224,7 +224,7 @@ function fusionarPrecioMeta(precioPrevio, nuevoBase) {
 }
 
 // GET /store/:storeId/products/all: el arreglo plano vive en data.products.data,
-// y la metadata de paginación en data.products.meta (misma convención que last_page del catálogo público).
+// y la metadata de paginaciÃ³n en data.products.meta (misma convenciÃ³n que last_page del catÃ¡logo pÃºblico).
 async function cargarCatalogoComercio(storeId, token, signal) {
   const urlPagina = (pagina) => `${ADONIS_BASE}/store/${storeId}/products/all?page=${pagina}`;
   const primera = await pedirJsonComercio(urlPagina(1), token, { signal });
@@ -237,7 +237,7 @@ async function cargarCatalogoComercio(storeId, token, signal) {
   return items;
 }
 
-// Tasa oficial de la tienda: endpoint público (misma convención que el resto del ERP), solo requiere apiKey
+// Tasa oficial de la tienda: endpoint pÃºblico (misma convenciÃ³n que el resto del ERP), solo requiere apiKey
 async function cargarTasaComercio(storeId, signal) {
   const res = await fetch(`${ADONIS_BASE}/store/${storeId}/payment/info`, {
     headers: { apiKey: ADONIS_API_KEY, "Content-Type": "application/json" },
@@ -252,9 +252,9 @@ function nombreCategoriaComercio(item) {
   return item.category?.name || (typeof item.category === "string" ? item.category : "") || item.internalCategory || "";
 }
 
-// Busca un valor probando varias grafías (camelCase, snake_case, MAYÚSCULAS) tanto en la raíz
+// Busca un valor probando varias grafÃ­as (camelCase, snake_case, MAYÃšSCULAS) tanto en la raÃ­z
 // del producto de Adonis como dentro de su metadata: el origen (import Excel vs. formulario propio)
-// no siempre usa la misma convención de nombres.
+// no siempre usa la misma convenciÃ³n de nombres.
 function leerCampoFlexible(item, meta, claves) {
   for (const clave of claves) {
     if (item[clave] !== undefined && item[clave] !== null && item[clave] !== "") return item[clave];
@@ -265,8 +265,8 @@ function leerCampoFlexible(item, meta, claves) {
   return undefined;
 }
 
-// Adonis no persiste de forma confiable ni metadata.variants (siempre vuelve vacío) ni un "description"
-// inflado con datos extra (columna con longitud máxima, ej. 255): la ficha técnica de farmacia se
+// Adonis no persiste de forma confiable ni metadata.variants (siempre vuelve vacÃ­o) ni un "description"
+// inflado con datos extra (columna con longitud mÃ¡xima, ej. 255): la ficha tÃ©cnica de farmacia se
 // guarda solo en el navegador, por tienda y por SKU, y nunca viaja dentro del payload a Adonis.
 function claveFarmaciaLocal(storeId) {
   return `farma_metadata_${storeId}`;
@@ -298,12 +298,12 @@ function guardarFichasFarmaciaLocalMasivo(storeId, entradas) {
 }
 
 // Mismo mecanismo y mismo motivo que la ficha de farmacia (arriba), generalizado a los atributos
-// universales de consumo masivo (Marca, Presentación, Volumen, Código de Barras): verificado contra
+// universales de consumo masivo (Marca, PresentaciÃ³n, Volumen, CÃ³digo de Barras): verificado contra
 // el backend real (producto FD001-001, tienda 47, 2026-09-28) que ninguno de estos viaja hoy como clave
 // suelta de metadata (metadata.marca no existe en el producto real, pese a que el formulario ya lo
-// envía así) — mismo síntoma que ya obligó a mover la ficha de farmacia a un namespace anidado. Como
+// envÃ­a asÃ­) â€” mismo sÃ­ntoma que ya obligÃ³ a mover la ficha de farmacia a un namespace anidado. Como
 // "supermercado" no es un namespace confirmado contra Adonis, se aplica el mismo respaldo de solo-navegador
-// en vez de inventar un contrato nuevo (ver NAMESPACES_POR_NICHO más abajo).
+// en vez de inventar un contrato nuevo (ver NAMESPACES_POR_NICHO mÃ¡s abajo).
 function claveExtendidaLocal(storeId) {
   return `comercio_extendido_${storeId}`;
 }
@@ -338,17 +338,19 @@ function mapearProductoComercio(item, idx, storeId) {
   const meta = item.metadata || {};
   const codigoProducto = String(item.code || item.codigo || item.sku || item.id || "").trim().toUpperCase();
   // Esquema real confirmado contra el backend (2026-09-27): Adonis persiste la ficha de farmacia en un
-  // objeto anidado (el booleano real se llama "requiereFrio"). El namespace es dinámico según el NICHO
-  // DEL PRODUCTO (obtenerNamespacePorNicho), no de la tienda — ver el porqué junto a esa función. Es la
-  // fuente de verdad cuando existe; localStorage queda como respaldo para productos que aún no se han
+  // objeto anidado (el booleano real se llama "requiereFrio"). El namespace es dinÃ¡mico segÃºn el NICHO
+  // DEL PRODUCTO (obtenerNamespacePorNicho), no de la tienda â€” ver el porquÃ© junto a esa funciÃ³n. Es la
+  // fuente de verdad cuando existe; localStorage queda como respaldo para productos que aÃºn no se han
   // vuelto a guardar con el esquema nuevo (ver handleGuardarProducto).
-  const namespaceFarmacia = obtenerNamespacePorNicho(meta.nicho || "General");
+  const nichoConfigurado = typeof window !== "undefined" && storeId ? localStorage.getItem(`store_nicho_${storeId}`) : null;
+  const nichoProducto = meta.nicho || nichoConfigurado || "General";
+  const namespaceFarmacia = obtenerNamespacePorNicho(nichoProducto);
   const fichaAdonis = (namespaceFarmacia && meta[namespaceFarmacia]) || null;
   const fichaFarmacia = leerFichasFarmaciaLocal(storeId)[codigoProducto] || null;
   const fichaExtendida = leerFichasExtendidasLocal(storeId)[codigoProducto] || null;
   if (idx === 0) {
     console.log("--> ITEM CRUDO DESDE ADONIS:", item.codigo, item.metadata || item.meta || item);
-    console.log("--> CLAVES EN RAÍZ DE ADONIS:", Object.keys(item));
+    console.log("--> CLAVES EN RAÃZ DE ADONIS:", Object.keys(item));
   }
   return {
     id: item.id != null ? String(item.id) : String(item.code || item.sku || `tmp_${Date.now()}`),
@@ -367,7 +369,7 @@ function mapearProductoComercio(item, idx, storeId) {
     status: item.status || "ACTIVE",
     outOfStock: Boolean(item.outOfStock),
     descripcion: String(meta.descripcion || item.description || ""),
-    nicho: meta.nicho || "General",
+    nicho: nichoProducto,
     principioActivo: fichaAdonis?.principioActivo ?? fichaFarmacia?.principioActivo ?? leerCampoFlexible(item, meta, ["principio_activo", "PRINCIPIO_ACTIVO", "principioActivo"]) ?? "",
     concentracion: fichaAdonis?.concentracion ?? fichaFarmacia?.concentracion ?? leerCampoFlexible(item, meta, ["concentracion", "CONCENTRACION", "concentracionDosis"]) ?? "",
     presentacion: fichaAdonis?.presentacion ?? fichaFarmacia?.presentacion ?? fichaExtendida?.presentacion ?? leerCampoFlexible(item, meta, ["presentacion", "PRESENTACION"]) ?? "",
@@ -387,7 +389,7 @@ function mapearProductoComercio(item, idx, storeId) {
     toppings: meta.toppings || [],
     unidadMedida: meta.unidadMedida || "kg",
     origen: "ADONIS_COMERCIO",
-    // metadata tal cual la devolvió Adonis: la edición rápida de precio la reenvía completa (solo cambia
+    // metadata tal cual la devolviÃ³ Adonis: la ediciÃ³n rÃ¡pida de precio la reenvÃ­a completa (solo cambia
     // price) para no perder weight/volume/comandaDisplay/variants ni un promoPrice ya existente
     metadataCrudo: meta,
   };
@@ -422,18 +424,18 @@ const FORM_INICIAL = {
   cadenaFrio: false,
   lote: "",
   fechaVencimiento: "",
-  // Tecnología & Hogar
+  // TecnologÃ­a & Hogar
   modelo: "",
   especificacionClave: "",
   voltaje: "110V",
   condicion: "Nuevo",
   mesesGarantia: "",
-  // Gastronomía & Heladería
+  // GastronomÃ­a & HeladerÃ­a
   variantes: [],
   areaDespacho: "Cocina",
   toppings: [],
   // Disponibilidad de variantes reales de Adonis (metadata.variants: grupos con items), independiente del
-  // nicho y de "variantes" (sabores con stock, arriba): aquí solo se enciende/apaga cada opción, sin cantidades
+  // nicho y de "variantes" (sabores con stock, arriba): aquÃ­ solo se enciende/apaga cada opciÃ³n, sin cantidades
   metadataVariants: [],
   // Granel / Peso
   unidadMedida: "kg",
@@ -475,7 +477,7 @@ function serializarSabores(variantes) {
 function parseBooleano(val) {
   if (typeof val === "boolean") return val;
   const s = String(val || "").trim().toUpperCase();
-  return s === "SI" || s === "SÍ" || s === "TRUE" || s === "1";
+  return s === "SI" || s === "SÃ" || s === "TRUE" || s === "1";
 }
 
 function serializarToppings(toppings) {
@@ -553,7 +555,7 @@ function tieneAlgunCampoFarmacia(campos) {
 }
 
 // Mismo motivo que extraerCamposFarmaciaExcel: el batch de Adonis tampoco persiste de forma confiable
-// estas columnas universales de consumo masivo (Marca, Presentación, Volumen, Código de Barras),
+// estas columnas universales de consumo masivo (Marca, PresentaciÃ³n, Volumen, CÃ³digo de Barras),
 // aplica a cualquier nicho (no solo Supermercado / Hipermercado & Licores).
 function extraerCamposComercioExcel(row) {
   return {
@@ -568,16 +570,16 @@ function tieneAlgunCampoComercio(campos) {
   return Boolean(campos.marca || campos.presentacion || campos.volumen || campos.barcode);
 }
 
-// Vuelve a sincronizar los campos estándar de un producto ya existente en Adonis (PUT /product/:id).
-// La ficha técnica de farmacia (camposFarmacia) ya NO viaja en este payload: Adonis no la persiste de
-// forma confiable en ningún campo (ni metadata suelta, ni metadata.variants, ni description con tag:
-// esta última rompía por el límite de longitud de esa columna). Solo vive en localStorage (ver
-// guardarFichasFarmaciaLocalMasivo). Devuelve true/false en vez de lanzar: ningún rechazo individual
+// Vuelve a sincronizar los campos estÃ¡ndar de un producto ya existente en Adonis (PUT /product/:id).
+// La ficha tÃ©cnica de farmacia (camposFarmacia) ya NO viaja en este payload: Adonis no la persiste de
+// forma confiable en ningÃºn campo (ni metadata suelta, ni metadata.variants, ni description con tag:
+// esta Ãºltima rompÃ­a por el lÃ­mite de longitud de esa columna). Solo vive en localStorage (ver
+// guardarFichasFarmaciaLocalMasivo). Devuelve true/false en vez de lanzar: ningÃºn rechazo individual
 // de Adonis debe interrumpir el lote ni la interfaz.
 async function sincronizarMetadataFarmacia(producto, camposFarmacia, token, esPrimero, extraPayload = {}) {
-  // Este PUT no cambia ningún dato del producto: la metadata que trajo Adonis manda sobre lo reconstruido, así
-  // no se pierden weight/volume/comandaDisplay/variants (columnas del Excel v2) ni se trunca ni se vacía nada.
-  // Lo reconstruido solo rellena las claves que Adonis no devolvió.
+  // Este PUT no cambia ningÃºn dato del producto: la metadata que trajo Adonis manda sobre lo reconstruido, asÃ­
+  // no se pierden weight/volume/comandaDisplay/variants (columnas del Excel v2) ni se trunca ni se vacÃ­a nada.
+  // Lo reconstruido solo rellena las claves que Adonis no devolviÃ³.
   const metaPrevia = producto.metadataCrudo || {};
   const payload = {
     id: producto.adonisId,
@@ -627,14 +629,14 @@ async function sincronizarMetadataFarmacia(producto, camposFarmacia, token, esPr
   }
 }
 
-// Vista previa JSON (Marketplace Core v2 "clásico"): útil para inspeccionar el producto,
-// pero NO es el payload que se envía a Adonis al guardar (ver handleGuardarProducto: root + metadata).
+// Vista previa JSON (Marketplace Core v2 "clÃ¡sico"): Ãºtil para inspeccionar el producto,
+// pero NO es el payload que se envÃ­a a Adonis al guardar (ver handleGuardarProducto: root + metadata).
 function buildMarketplaceProductPayload(producto) {
   const metadataVariants = [];
 
   if ((producto.variantes || []).length > 0) {
     metadataVariants.push({
-      name: "Sabor / Presentación",
+      name: "Sabor / PresentaciÃ³n",
       code: "FLAVOR",
       selectType: "SINGLE",
       pricingRole: "BASE",
@@ -689,8 +691,8 @@ function buildMarketplaceProductPayload(producto) {
       barcode: producto.barcode || "",
       marca: producto.marca || "",
       volumen: producto.volumen || "",
-      // Ficha técnica de farmacia: ya viene poblada en "producto" desde mapearProductoComercio
-      // (localStorage por SKU); se exporta aquí solo como referencia, no se envía a Adonis.
+      // Ficha tÃ©cnica de farmacia: ya viene poblada en "producto" desde mapearProductoComercio
+      // (localStorage por SKU); se exporta aquÃ­ solo como referencia, no se envÃ­a a Adonis.
       farmacia: {
         principioActivo: producto.principioActivo || "",
         concentracion: producto.concentracion || "",
@@ -706,9 +708,9 @@ function buildMarketplaceProductPayload(producto) {
   };
 }
 
-// Selector Master de tiendas: combobox desplegable anclado a su botón (sin overlay ni modal) con búsqueda rápida
+// Selector Master de tiendas: combobox desplegable anclado a su botÃ³n (sin overlay ni modal) con bÃºsqueda rÃ¡pida
 // cuando hay muchas tiendas. Teclado: flechas para moverse, Enter para elegir, Esc para cerrar.
-const quitarAcentos = (texto) => String(texto || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const quitarAcentos = (texto) => String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 function SelectorTienda({ tiendas, activaId, nombreActivo, cargandoLista, errorLista, onReintentar, onSeleccionar, deshabilitado }) {
   const [abierto, setAbierto] = useState(false);
@@ -770,7 +772,7 @@ function SelectorTienda({ tiendas, activaId, nombreActivo, cargandoLista, errorL
         }}
         aria-haspopup="listbox"
         aria-expanded={abierto}
-        title={deshabilitado ? "Espera a que termine la operación en curso para cambiar de tienda" : "Cambiar de tienda"}
+        title={deshabilitado ? "Espera a que termine la operaciÃ³n en curso para cambiar de tienda" : "Cambiar de tienda"}
         className="flex items-center gap-1.5 max-w-[240px] px-2 py-0.5 rounded-lg border border-slate-200 bg-white hover:border-[#FE6712] text-[11px] font-bold text-slate-600 transition disabled:opacity-60 disabled:hover:border-slate-200"
       >
         <Store className="w-3 h-3 shrink-0 text-[#FE6712]" />
@@ -780,8 +782,8 @@ function SelectorTienda({ tiendas, activaId, nombreActivo, cargandoLista, errorL
       </button>
 
       {abierto && (
-        // max-w descuenta lo que el botón queda desplazado del borde izquierdo en móvil (~5.5rem: margen, botón de
-        // volver y separación), para que el desplegable, anclado a la izquierda del selector, no se salga por la derecha
+        // max-w descuenta lo que el botÃ³n queda desplazado del borde izquierdo en mÃ³vil (~5.5rem: margen, botÃ³n de
+        // volver y separaciÃ³n), para que el desplegable, anclado a la izquierda del selector, no se salga por la derecha
         <div className="absolute left-0 top-full mt-1 z-50 w-72 max-w-[calc(100vw-5.5rem)] bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden" onKeyDown={alTeclear}>
           {conBusqueda && (
             <div className="p-2 border-b border-slate-100">
@@ -884,7 +886,7 @@ function SubidaImagen({ valor, vistaPreviaLocal, subiendo, progreso, error, onAr
       >
         <div className="relative w-20 h-20 shrink-0 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center">
           {mostrada ? (
-            // eslint-disable-next-line @next/next/no-img-element -- vista previa dinámica (blob local o URL arbitraria), incompatible con next/image sin configurar dominios
+            // eslint-disable-next-line @next/next/no-img-element -- vista previa dinÃ¡mica (blob local o URL arbitraria), incompatible con next/image sin configurar dominios
             <img src={mostrada} alt="Vista previa de la imagen del producto" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = IMAGEN_DEFECTO; }} />
           ) : (
             <Camera className="w-6 h-6 text-slate-300" />
@@ -897,7 +899,7 @@ function SubidaImagen({ valor, vistaPreviaLocal, subiendo, progreso, error, onAr
           )}
         </div>
         <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="text-[11px] text-slate-500">Arrastra una imagen aquí o elige un archivo. PNG, JPG o WEBP · máx. {MAX_IMAGEN_MB} MB.</p>
+          <p className="text-[11px] text-slate-500">Arrastra una imagen aquÃ­ o elige un archivo. PNG, JPG o WEBP Â· mÃ¡x. {MAX_IMAGEN_MB} MB.</p>
           <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
@@ -930,8 +932,8 @@ function SubidaImagen({ valor, vistaPreviaLocal, subiendo, progreso, error, onAr
   );
 }
 
-// Celda numérica editable en línea: guarda con Enter o al perder el foco, solo si el valor es válido
-// y cambió. Escape cancela. Sin efectos: el borrador vive únicamente mientras la celda tiene el foco.
+// Celda numÃ©rica editable en lÃ­nea: guarda con Enter o al perder el foco, solo si el valor es vÃ¡lido
+// y cambiÃ³. Escape cancela. Sin efectos: el borrador vive Ãºnicamente mientras la celda tiene el foco.
 function CeldaEditable({ valor, onGuardar, prefijo = "", entero = false, deshabilitado = false, etiqueta, claseTexto = "text-slate-900" }) {
   const [borrador, setBorrador] = useState(null);
   const cancelado = useRef(false);
@@ -962,10 +964,10 @@ function CeldaEditable({ valor, onGuardar, prefijo = "", entero = false, deshabi
         value={mostrado}
         disabled={deshabilitado}
         aria-label={etiqueta}
-        title="Enter o clic fuera para guardar · Esc para cancelar"
+        title="Enter o clic fuera para guardar Â· Esc para cancelar"
         onFocus={(e) => {
-          // El borrador arranca con el mismo texto que ya se ve ("10.00"): si cambiara, React reescribiría
-          // el valor del input y se perdería la selección, y lo que se teclea se añadiría al final.
+          // El borrador arranca con el mismo texto que ya se ve ("10.00"): si cambiara, React reescribirÃ­a
+          // el valor del input y se perderÃ­a la selecciÃ³n, y lo que se teclea se aÃ±adirÃ­a al final.
           setBorrador(mostrado);
           e.target.select();
         }}
@@ -990,7 +992,7 @@ export default function ComerciosProductosPage() {
   const { perfil } = useBusinessProfile();
   const esPerfilSimple = perfil === "SIMPLE";
 
-  // Guardia de sesión del portal de comercios: exige un token válido en localStorage ("iac_store")
+  // Guardia de sesiÃ³n del portal de comercios: exige un token vÃ¡lido en localStorage ("iac_store")
   const [token, setToken] = useState(null);
   const [comercio, setComercio] = useState(null);
   const [verificandoSesion, setVerificandoSesion] = useState(true);
@@ -1007,14 +1009,14 @@ export default function ComerciosProductosPage() {
     setVerificandoSesion(false);
   }, [router]);
 
-  // Modo Master: el selector de la cabecera cambia la tienda activa sin cerrar sesión ni tocar localStorage.
-  // Por defecto se usa la tienda de la sesión; "storeId" (la activa) alimenta el resto del componente.
+  // Modo Master: el selector de la cabecera cambia la tienda activa sin cerrar sesiÃ³n ni tocar localStorage.
+  // Por defecto se usa la tienda de la sesiÃ³n; "storeId" (la activa) alimenta el resto del componente.
   const storeIdSesion = comercio?.entityId || comercio?.storeId || comercio?.store?.id || comercio?.comercio_id || comercio?.id || null;
   const [storeIdActivo, setStoreIdActivo] = useState(null);
   const storeId = storeIdActivo ?? storeIdSesion;
   const esModoMaster = storeIdSesion != null && storeId != null && String(storeId) !== String(storeIdSesion);
   // En Modo Master las escrituras (PUT /product/:id, POST /product) viajan con el storeId elegido; con la tienda
-  // de la sesión el payload queda exactamente igual que antes.
+  // de la sesiÃ³n el payload queda exactamente igual que antes.
   const payloadTienda = esModoMaster ? { storeId } : {};
   const [tiendas, setTiendas] = useState([]);
   const [cargandoTiendas, setCargandoTiendas] = useState(true);
@@ -1023,7 +1025,7 @@ export default function ComerciosProductosPage() {
   const [importando, setImportando] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [errorExportacion, setErrorExportacion] = useState("");
-  // Subida de imágenes del modal: el usuario dueño del token (no la tienda) es el que va en la ruta del upload
+  // Subida de imÃ¡genes del modal: el usuario dueÃ±o del token (no la tienda) es el que va en la ruta del upload
   const idUsuarioSubida = comercio?.userId ?? comercio?.user?.id ?? comercio?.id ?? null;
   const [subiendoImagen, setSubiendoImagen] = useState(false);
   const [progresoImagen, setProgresoImagen] = useState(0);
@@ -1064,7 +1066,7 @@ export default function ComerciosProductosPage() {
   const [modalJsonAbierto, setModalJsonAbierto] = useState(false);
   const [productoJsonActual, setProductoJsonActual] = useState(null);
 
-  // Carga en vivo desde AdonisJS (catálogo autenticado del comercio + tasa oficial de su tienda)
+  // Carga en vivo desde AdonisJS (catÃ¡logo autenticado del comercio + tasa oficial de su tienda)
   useEffect(() => {
     if (!token || !storeId) return undefined;
     const controller = new AbortController();
@@ -1076,7 +1078,7 @@ export default function ComerciosProductosPage() {
           setError("");
         } else {
           console.error(catalogo.reason);
-          setError("No se pudo cargar el catálogo desde Adonis. Verifica tu conexión e intenta de nuevo.");
+          setError("No se pudo cargar el catÃ¡logo desde Adonis. Verifica tu conexiÃ³n e intenta de nuevo.");
         }
         if (tasaResp.status === "fulfilled") setTasaAdonis(tasaResp.value);
       })
@@ -1113,9 +1115,9 @@ export default function ComerciosProductosPage() {
     setRecargaTiendas((n) => n + 1);
   };
 
-  // Cambio de tienda: fija el storeId activo (el efecto del catálogo se dispara solo por su dependencia y aborta
-  // la petición anterior) y deja limpio todo lo que pertenecía a la tienda previa: catálogo, tasa, filtros,
-  // avisos, filas en edición y los paneles/formularios abiertos.
+  // Cambio de tienda: fija el storeId activo (el efecto del catÃ¡logo se dispara solo por su dependencia y aborta
+  // la peticiÃ³n anterior) y deja limpio todo lo que pertenecÃ­a a la tienda previa: catÃ¡logo, tasa, filtros,
+  // avisos, filas en ediciÃ³n y los paneles/formularios abiertos.
   const handleCambiarTienda = (id) => {
     if (String(id) === String(storeId)) return;
     Object.values(temporizadoresFilas.current).forEach(clearTimeout);
@@ -1137,12 +1139,12 @@ export default function ComerciosProductosPage() {
   };
 
   // Altas/ediciones ya persisten directamente en Adonis (ver handleGuardarProducto); esto solo
-  // sincroniza el estado local, por ejemplo tras una importación de Excel.
+  // sincroniza el estado local, por ejemplo tras una importaciÃ³n de Excel.
   const actualizarProductos = (nuevos) => {
     setProductos(nuevos);
   };
 
-  // Vuelve a consultar Adonis (catálogo + tasa) y refresca la tabla
+  // Vuelve a consultar Adonis (catÃ¡logo + tasa) y refresca la tabla
   const handleSincronizarAdonis = () => {
     setCargando(true);
     setRecarga((n) => n + 1);
@@ -1152,7 +1154,7 @@ export default function ComerciosProductosPage() {
     const file = e.target.files[0];
     if (!file) return;
     if (!token || !storeId) {
-      setReporteImportacion({ tipo: "error", archivo: file.name, mensaje: "Tu sesión expiró o no tiene una tienda asociada. Vuelve a iniciar sesión.", errores: [] });
+      setReporteImportacion({ tipo: "error", archivo: file.name, mensaje: "Tu sesiÃ³n expirÃ³ o no tiene una tienda asociada. Vuelve a iniciar sesiÃ³n.", errores: [] });
       if (fileInputRef.current) fileInputRef.current.value = null;
       return;
     }
@@ -1164,8 +1166,8 @@ export default function ComerciosProductosPage() {
       const respuesta = await subirExcelBatchComercio(storeId, file, token, borrarNoIncluidos, { dryRun: simular });
       const errores = normalizarErroresBatch(respuesta?.errors ?? respuesta?.data?.errors);
 
-      // Simulación: el backend solo valida y devuelve el preview. Se aborta todo efecto secundario:
-      // sin refetch del catálogo, sin PUT de sincronización y sin persistir fichas de farmacia en localStorage.
+      // SimulaciÃ³n: el backend solo valida y devuelve el preview. Se aborta todo efecto secundario:
+      // sin refetch del catÃ¡logo, sin PUT de sincronizaciÃ³n y sin persistir fichas de farmacia en localStorage.
       if (simular) {
         const preview = respuesta?.preview ?? respuesta?.data?.preview ?? {};
         setReporteImportacion({
@@ -1184,8 +1186,8 @@ export default function ComerciosProductosPage() {
 
       const stats = respuesta?.data || {};
 
-      // El batch descarta las columnas de farmacia y las de marca/presentación/volumen: Adonis no las
-      // persiste de forma confiable en ningún campo del producto. Ambas fichas se guardan solo en este
+      // El batch descarta las columnas de farmacia y las de marca/presentaciÃ³n/volumen: Adonis no las
+      // persiste de forma confiable en ningÃºn campo del producto. Ambas fichas se guardan solo en este
       // navegador, por SKU.
       const catalogoActualizado = (await cargarCatalogoComercio(storeId, token)).map((item, idx) => mapearProductoComercio(item, idx, storeId));
       setProductos(catalogoActualizado);
@@ -1206,8 +1208,8 @@ export default function ComerciosProductosPage() {
       guardarFichasFarmaciaLocalMasivo(storeId, entradasFarmacia);
       guardarFichasExtendidasLocalMasivo(storeId, entradasComercio);
 
-      // Une ambos conjuntos de códigos: un producto puede traer solo ficha de farmacia, solo datos
-      // de marca/presentación/volumen, o ambos (ej. un multivitamínico con marca comercial propia).
+      // Une ambos conjuntos de cÃ³digos: un producto puede traer solo ficha de farmacia, solo datos
+      // de marca/presentaciÃ³n/volumen, o ambos (ej. un multivitamÃ­nico con marca comercial propia).
       const camposComercioPorCodigo = new Map(entradasComercio);
       const codigosASincronizar = new Set([...entradasFarmacia.map(([c]) => c), ...entradasComercio.map(([c]) => c)]);
 
@@ -1221,7 +1223,7 @@ export default function ComerciosProductosPage() {
         if (ok) sincronizados++;
       }
 
-      // Refleja de inmediato en la tabla las fichas técnicas recién guardadas en localStorage,
+      // Refleja de inmediato en la tabla las fichas tÃ©cnicas reciÃ©n guardadas en localStorage,
       // sin pedir la red de nuevo ni tocar el resto de los campos ya cargados del producto.
       if (entradasFarmacia.length > 0 || entradasComercio.length > 0) {
         const dictLocal = leerFichasFarmaciaLocal(storeId);
@@ -1246,7 +1248,7 @@ export default function ComerciosProductosPage() {
           { etiqueta: "Eliminados", valor: Number(stats.deleted) || 0 },
           { etiqueta: "Con error", valor: errores.length },
           { etiqueta: "Fichas de farmacia (local)", valor: entradasFarmacia.length },
-          { etiqueta: "Marca/Presentación/Volumen (local)", valor: entradasComercio.length },
+          { etiqueta: "Marca/PresentaciÃ³n/Volumen (local)", valor: entradasComercio.length },
         ],
         errores,
       });
@@ -1259,13 +1261,13 @@ export default function ComerciosProductosPage() {
     }
   };
 
-  // El Excel plano de un solo tab (generado antes localmente con XLSX) no trae las 11 pestañas que Adonis v2
-  // espera para sabores/variantes: si ese archivo se reimportaba vía batch v2, el backend interpretaba que la
-  // tienda no tiene variantes y borraba Product.metadata.variants en producción. Se reemplaza por una descarga
-  // directa del Excel oficial que el propio core genera (ya con las 11 pestañas correctas).
+  // El Excel plano de un solo tab (generado antes localmente con XLSX) no trae las 11 pestaÃ±as que Adonis v2
+  // espera para sabores/variantes: si ese archivo se reimportaba vÃ­a batch v2, el backend interpretaba que la
+  // tienda no tiene variantes y borraba Product.metadata.variants en producciÃ³n. Se reemplaza por una descarga
+  // directa del Excel oficial que el propio core genera (ya con las 11 pestaÃ±as correctas).
   const handleExportExcel = async () => {
     if (!token || !storeId) {
-      setErrorExportacion("No se puede exportar: tu sesión expiró o no tiene una tienda asociada.");
+      setErrorExportacion("No se puede exportar: tu sesiÃ³n expirÃ³ o no tiene una tienda asociada.");
       return;
     }
     setErrorExportacion("");
@@ -1276,13 +1278,13 @@ export default function ComerciosProductosPage() {
         headers: { apiKey: ADONIS_API_KEY, Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        // Adonis responde JSON en error y binario (xlsx) en éxito
-        let mensaje = `Adonis respondió HTTP ${res.status} al generar el Excel.`;
+        // Adonis responde JSON en error y binario (xlsx) en Ã©xito
+        let mensaje = `Adonis respondiÃ³ HTTP ${res.status} al generar el Excel.`;
         try {
           const datos = await res.json();
           mensaje = (typeof datos?.message === "object" ? JSON.stringify(datos.message) : datos?.message) || mensaje;
         } catch (e) {
-          // sin cuerpo JSON legible: se conserva el mensaje genérico con el status
+          // sin cuerpo JSON legible: se conserva el mensaje genÃ©rico con el status
         }
         throw new Error(mensaje);
       }
@@ -1322,9 +1324,9 @@ export default function ComerciosProductosPage() {
     setModalJsonAbierto(true);
   };
 
-  // Sube el archivo a Adonis y asigna la URL pública devuelta al campo image del formulario. Si falla, el modal
+  // Sube el archivo a Adonis y asigna la URL pÃºblica devuelta al campo image del formulario. Si falla, el modal
   // sigue abierto con todo lo escrito y la imagen anterior intacta; solo se muestra el aviso bajo la zona de carga.
-  // El resultado de una subida iniciada en otra sesión del modal (se cerró y se abrió otro) se descarta.
+  // El resultado de una subida iniciada en otra sesiÃ³n del modal (se cerrÃ³ y se abriÃ³ otro) se descarta.
   const handleArchivoImagen = async (archivo) => {
     const sesion = sesionModal.current;
     const vigente = () => sesionModal.current === sesion;
@@ -1335,7 +1337,7 @@ export default function ComerciosProductosPage() {
       return;
     }
     if (!token || idUsuarioSubida == null) {
-      setErrorImagen("No se puede subir la imagen: falta el identificador de tu usuario en la sesión. Vuelve a iniciar sesión.");
+      setErrorImagen("No se puede subir la imagen: falta el identificador de tu usuario en la sesiÃ³n. Vuelve a iniciar sesiÃ³n.");
       return;
     }
     const previa = URL.createObjectURL(archivo);
@@ -1362,7 +1364,7 @@ export default function ComerciosProductosPage() {
     setFormData((prev) => ({ ...prev, image: "" }));
   };
 
-  // Cada apertura del modal es una sesión nueva: se limpia el estado de la subida anterior
+  // Cada apertura del modal es una sesiÃ³n nueva: se limpia el estado de la subida anterior
   const reiniciarSubidaImagen = () => {
     sesionModal.current += 1;
     setErrorImagen("");
@@ -1374,8 +1376,10 @@ export default function ComerciosProductosPage() {
   const abrirModalNuevo = () => {
     reiniciarSubidaImagen();
     setProductoEnEdicion(null);
+    const nichoConfigurado = typeof window !== "undefined" ? localStorage.getItem(`store_nicho_${storeId}`) || "General" : "General";
     setFormData({
       ...FORM_INICIAL,
+      nicho: nichoConfigurado,
       code: `P00${productos.length + 1}`,
     });
     setNuevoTopping({ nombre: "", precioExtra: "" });
@@ -1386,8 +1390,10 @@ export default function ComerciosProductosPage() {
     const precioReal = prod?.metadata?.price?.basePrice ?? prod?.price ?? 0;
     reiniciarSubidaImagen();
     setProductoEnEdicion(prod);
+    const nichoConfigurado = typeof window !== "undefined" ? localStorage.getItem(`store_nicho_${storeId}`) || "General" : "General";
     setFormData({
       ...FORM_INICIAL,
+      nicho: nichoConfigurado, // Fallback si prod no tiene nicho
       ...prod,
       price: precioReal,
       variantes: prod.variantes || [],
@@ -1399,7 +1405,7 @@ export default function ComerciosProductosPage() {
   };
 
   const totalVariantesStock = formData.variantes.reduce((acc, v) => acc + (Number(v.stock) || 0), 0);
-  const esGastronomia = formData.nicho === "Gastronomía & Heladería";
+  const esGastronomia = formData.nicho === "GastronomÃ­a & HeladerÃ­a";
   const costoNum = Number(formData.costo) || 0;
   const priceNum = Number(formData.price) || 0;
   const margenBruto = priceNum > 0 ? ((priceNum - costoNum) / priceNum) * 100 : 0;
@@ -1416,8 +1422,8 @@ export default function ComerciosProductosPage() {
     }));
   };
 
-  // Enciende/apaga un ítem de un grupo de metadata.variants (real de Adonis). Solo altera "status" de ese
-  // ítem específico, de forma inmutable; no toca stock (este módulo no maneja cantidades por variante).
+  // Enciende/apaga un Ã­tem de un grupo de metadata.variants (real de Adonis). Solo altera "status" de ese
+  // Ã­tem especÃ­fico, de forma inmutable; no toca stock (este mÃ³dulo no maneja cantidades por variante).
   const handleToggleVarianteItem = (grupoIdx, itemIdx) => {
     setFormData(prev => ({
       ...prev,
@@ -1438,7 +1444,7 @@ export default function ComerciosProductosPage() {
     setFormData(prev => ({ ...prev, variantes: prev.variantes.filter((_, i) => i !== idx) }));
   };
 
-  const mostrarToppings = formData.nicho === "Gastronomía & Heladería" || formData.nicho === "General";
+  const mostrarToppings = formData.nicho === "GastronomÃ­a & HeladerÃ­a" || formData.nicho === "General";
 
   const handleAgregarTopping = () => {
     if (!nuevoTopping.nombre.trim()) return;
@@ -1457,8 +1463,8 @@ export default function ComerciosProductosPage() {
     setFormData(prev => ({ ...prev, toppings: prev.toppings.filter(t => t.id !== id) }));
   };
 
-  // Túnel de datos hacia Adonis: separa los campos básicos (raíz) de los extendidos (metadata) y
-  // hace POST /product (alta) o PUT /product/:id (edición) con el token del comercio.
+  // TÃºnel de datos hacia Adonis: separa los campos bÃ¡sicos (raÃ­z) de los extendidos (metadata) y
+  // hace POST /product (alta) o PUT /product/:id (ediciÃ³n) con el token del comercio.
   const handleGuardarProducto = async (e) => {
     e.preventDefault();
     if (!formData.name || !formData.price) {
@@ -1466,15 +1472,15 @@ export default function ComerciosProductosPage() {
       return;
     }
     if (!token || !storeId) {
-      alert("Tu sesión expiró o no tiene una tienda asociada. Vuelve a iniciar sesión.");
+      alert("Tu sesiÃ³n expirÃ³ o no tiene una tienda asociada. Vuelve a iniciar sesiÃ³n.");
       return;
     }
 
     const imagenFinal = formData.image.trim() || IMAGEN_DEFECTO;
     const stockFinal = esGastronomia ? totalVariantesStock : (Number(formData.stock) || 0);
 
-    // Adonis no persiste la ficha técnica de farmacia de forma confiable (ni metadata suelta, ni
-    // metadata.variants, ni description con tag: rompe el límite de longitud de esa columna). Se
+    // Adonis no persiste la ficha tÃ©cnica de farmacia de forma confiable (ni metadata suelta, ni
+    // metadata.variants, ni description con tag: rompe el lÃ­mite de longitud de esa columna). Se
     // guarda solo en localStorage, por tienda y por SKU (ver guardarFichaFarmaciaLocal).
     const camposFarmaciaForm = {
       principioActivo: formData.principioActivo,
@@ -1498,7 +1504,7 @@ export default function ComerciosProductosPage() {
       barcode: formData.barcode,
     });
 
-    // Campos básicos que AdonisJS espera en la raíz del producto
+    // Campos bÃ¡sicos que AdonisJS espera en la raÃ­z del producto
     const raiz = {
       name: formData.name,
       price: Number(formData.price) || 0,
@@ -1511,7 +1517,7 @@ export default function ComerciosProductosPage() {
     };
 
     // Campos avanzados/personalizados que Adonis no soporta nativamente: viajan agrupados en "metadata".
-    // En edición se parte de la metadata que trajo Adonis (weight, volume, comandaDisplay, variants y cualquier
+    // En ediciÃ³n se parte de la metadata que trajo Adonis (weight, volume, comandaDisplay, variants y cualquier
     // otra clave): lo que el formulario edita la sobrescribe, pero lo que no maneja no se pierde.
     const metadataPrevia = productoEnEdicion?.metadataCrudo || {};
     const metadata = {
@@ -1535,23 +1541,23 @@ export default function ComerciosProductosPage() {
       unidadMedida: formData.unidadMedida,
     };
 
-    // Esquema V2: el core de Adonis lee el precio desde metadata.price.basePrice, no de la raíz
-    // El modal no tiene campo de precio promocional: en edición se conserva el promoPrice que ya tenía Adonis;
+    // Esquema V2: el core de Adonis lee el precio desde metadata.price.basePrice, no de la raÃ­z
+    // El modal no tiene campo de precio promocional: en ediciÃ³n se conserva el promoPrice que ya tenÃ­a Adonis;
     // solo un producto nuevo (o sin promo previo) parte de 0, como antes.
     metadata.price = fusionarPrecioMeta(metadataPrevia.price, Number(formData.price) || 0);
     if (Number(formData.promoPrice)) metadata.price.promoPrice = Number(formData.promoPrice);
     else if (metadata.price.promoPrice === undefined) metadata.price.promoPrice = 0;
 
-    // Esquema real confirmado contra el backend (2026-09-27, tienda 47, producto FD001-001): Adonis SÍ
-    // persiste la ficha técnica de farmacia, pero solo dentro de un objeto anidado — como claves sueltas en
-    // la raíz de metadata se descartan (ver diagnóstico anterior en este mismo archivo). El nombre de ese
-    // objeto es dinámico según el NICHO DEL PRODUCTO (obtenerNamespacePorNicho), nunca hardcodeado ni atado
-    // a la tienda: así un producto de Farmacia y uno de Gastronomía en la misma tienda nunca comparten
+    // Esquema real confirmado contra el backend (2026-09-27, tienda 47, producto FD001-001): Adonis SÃ
+    // persiste la ficha tÃ©cnica de farmacia, pero solo dentro de un objeto anidado â€” como claves sueltas en
+    // la raÃ­z de metadata se descartan (ver diagnÃ³stico anterior en este mismo archivo). El nombre de ese
+    // objeto es dinÃ¡mico segÃºn el NICHO DEL PRODUCTO (obtenerNamespacePorNicho), nunca hardcodeado ni atado
+    // a la tienda: asÃ­ un producto de Farmacia y uno de GastronomÃ­a en la misma tienda nunca comparten
     // namespace ("no mezclar helados con medicinas"). El campo real se llama "requiereFrio", no "cadenaFrio"
     // (ese sigue siendo solo el nombre interno del formulario/checkbox). Se fusiona sobre
-    // metadataPrevia[namespace] para no perder ninguna clave que Adonis ya tuviera ahí y que este formulario
-    // no conozca. Fuera del nicho Farmacia no se escribe nada aquí: no hay namespace confirmado para los
-    // demás nichos, y estos 9 campos no tienen sentido para un producto de otro rubro.
+    // metadataPrevia[namespace] para no perder ninguna clave que Adonis ya tuviera ahÃ­ y que este formulario
+    // no conozca. Fuera del nicho Farmacia no se escribe nada aquÃ­: no hay namespace confirmado para los
+    // demÃ¡s nichos, y estos 9 campos no tienen sentido para un producto de otro rubro.
     const namespace = obtenerNamespacePorNicho(formData.nicho);
     if (namespace) {
       metadata[namespace] = {
@@ -1568,15 +1574,15 @@ export default function ComerciosProductosPage() {
       };
     }
 
-    // Disponibilidad de variantes (metadata.variants): viaja tal cual quedó en el formulario, con los switches
-    // de encendido/apagado ya aplicados por handleToggleVarianteItem. Si el producto no traía variantes al
-    // abrir el modal, esto es [] y no reemplaza nada que ya existiera (metadataPrevia no tenía variants ahí).
+    // Disponibilidad de variantes (metadata.variants): viaja tal cual quedÃ³ en el formulario, con los switches
+    // de encendido/apagado ya aplicados por handleToggleVarianteItem. Si el producto no traÃ­a variantes al
+    // abrir el modal, esto es [] y no reemplaza nada que ya existiera (metadataPrevia no tenÃ­a variants ahÃ­).
     metadata.variants = formData.metadataVariants;
 
     const payload = { ...raiz, metadata, ...payloadTienda };
-    // El backend exige la subcategoría bajo esta clave en snake_case en la raíz del payload
+    // El backend exige la subcategorÃ­a bajo esta clave en snake_case en la raÃ­z del payload
     payload.internal_category = formData.subcategoria || formData.subcategory || formData.internal_category || "";
-    // INYECCIÓN CRÍTICA: al editar, viaja el id real de Adonis en el payload para que el backend lo trate como actualización
+    // INYECCIÃ“N CRÃTICA: al editar, viaja el id real de Adonis en el payload para que el backend lo trate como actualizaciÃ³n
     if (productoEnEdicion?.adonisId) {
       payload.id = productoEnEdicion.adonisId;
     }
@@ -1590,7 +1596,7 @@ export default function ComerciosProductosPage() {
         body: JSON.stringify(payload),
       });
       setModalAbierto(false);
-      // Adonis es la única fuente de verdad: se refresca el catálogo real tras guardar
+      // Adonis es la Ãºnica fuente de verdad: se refresca el catÃ¡logo real tras guardar
       setRecarga((n) => n + 1);
     } catch (err) {
       alert(err.message || "No se pudo guardar el producto en Adonis.");
@@ -1599,10 +1605,10 @@ export default function ComerciosProductosPage() {
     }
   };
 
-  // Baja lógica: no existe endpoint DELETE (se protege el historial contable). Se marca status: "INACTIVE"
-  // vía PUT /product/:id y se refresca desde Adonis, que sigue siendo la única fuente de verdad.
+  // Baja lÃ³gica: no existe endpoint DELETE (se protege el historial contable). Se marca status: "INACTIVE"
+  // vÃ­a PUT /product/:id y se refresca desde Adonis, que sigue siendo la Ãºnica fuente de verdad.
   const handleEliminarProducto = async (producto) => {
-    if (!confirm(`¿Desactivar "${producto.name}"? Dejará de mostrarse en el catálogo.`)) return;
+    if (!confirm(`Â¿Desactivar "${producto.name}"? DejarÃ¡ de mostrarse en el catÃ¡logo.`)) return;
     if (!token || !producto.adonisId) {
       alert("No se puede desactivar: falta el identificador de Adonis para este producto.");
       return;
@@ -1620,7 +1626,7 @@ export default function ComerciosProductosPage() {
     }
   };
 
-  // Micro-indicador por fila: "guardando" (spinner), "ok" (check verde ~2 s) o "error" (queda hasta el próximo cambio)
+  // Micro-indicador por fila: "guardando" (spinner), "ok" (check verde ~2 s) o "error" (queda hasta el prÃ³ximo cambio)
   const marcarFila = (id, fase, mensaje = "") => {
     clearTimeout(temporizadoresFilas.current[id]);
     setEstadoFilas((prev) => ({ ...prev, [id]: { fase, mensaje } }));
@@ -1635,7 +1641,7 @@ export default function ComerciosProductosPage() {
     }
   };
 
-  // Edición rápida en tabla: actualización optimista del estado local y PUT /product/:id solo con el id y
+  // EdiciÃ³n rÃ¡pida en tabla: actualizaciÃ³n optimista del estado local y PUT /product/:id solo con el id y
   // los campos que cambian. Si Adonis rechaza, se revierte la fila y se avisa en la fila y en el banner.
   const guardarCambioRapido = async (producto, cambiosLocales, cambiosPayload) => {
     if (!token || !producto.adonisId) {
@@ -1652,9 +1658,9 @@ export default function ComerciosProductosPage() {
       marcarFila(producto.id, "ok");
     } catch (err) {
       setProductos((prev) => prev.map((p) => (p.id === producto.id ? { ...p, ...previo } : p)));
-      const mensaje = err.message || "Adonis rechazó el cambio.";
+      const mensaje = err.message || "Adonis rechazÃ³ el cambio.";
       marcarFila(producto.id, "error", mensaje);
-      setErrorEdicionRapida(`No se pudo guardar «${producto.name}»: ${mensaje}`);
+      setErrorEdicionRapida(`No se pudo guardar Â«${producto.name}Â»: ${mensaje}`);
     }
   };
 
@@ -1667,8 +1673,8 @@ export default function ComerciosProductosPage() {
     guardarCambioRapido(producto, { stock: nuevo }, { stock: nuevo });
   };
 
-  // El precio V2 vive en metadata.price.basePrice (la raíz es solo el respaldo V1): se reenvía la metadata
-  // completa que trajo Adonis cambiando únicamente price, para no perder el resto de sus claves.
+  // El precio V2 vive en metadata.price.basePrice (la raÃ­z es solo el respaldo V1): se reenvÃ­a la metadata
+  // completa que trajo Adonis cambiando Ãºnicamente price, para no perder el resto de sus claves.
   const handleEditarPrecio = (producto, nuevo) => {
     const metaPrevia = producto.metadataCrudo || {};
     const metadata = { ...metaPrevia, price: fusionarPrecioMeta(metaPrevia.price, nuevo) };
@@ -1695,9 +1701,9 @@ export default function ComerciosProductosPage() {
     );
   }
 
-  // RBAC (Reglas de Oro §3): el Kardex expone Excel y costos, restringido a ADMIN/DUEÑO. La navegación en
-  // MenuComercio ya oculta este enlace para un vendedor, pero la restricción real vive aquí (por si escribe
-  // la URL directo). Ningún dato de producto se calcula ni se muestra antes de esta guardia.
+  // RBAC (Reglas de Oro Â§3): el Kardex expone Excel y costos, restringido a ADMIN/DUEÃ‘O. La navegaciÃ³n en
+  // MenuComercio ya oculta este enlace para un vendedor, pero la restricciÃ³n real vive aquÃ­ (por si escribe
+  // la URL directo). NingÃºn dato de producto se calcula ni se muestra antes de esta guardia.
   if (esVendedorComercio(comercio)) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4 font-sans">
@@ -1706,8 +1712,8 @@ export default function ComerciosProductosPage() {
             <Lock className="w-7 h-7" />
           </div>
           <h2 className="text-base font-black text-slate-900">Acceso restringido</h2>
-          <p className="text-xs text-slate-500 leading-relaxed">El Kardex (catálogo, Excel y costos) solo está disponible para roles de Administración o Dueño.</p>
-          <button type="button" onClick={handleCerrarSesion} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition">Cerrar sesión</button>
+          <p className="text-xs text-slate-500 leading-relaxed">El Kardex (catÃ¡logo, Excel y costos) solo estÃ¡ disponible para roles de AdministraciÃ³n o DueÃ±o.</p>
+          <button type="button" onClick={handleCerrarSesion} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition">Cerrar sesiÃ³n</button>
         </div>
       </div>
     );
@@ -1724,7 +1730,7 @@ export default function ComerciosProductosPage() {
             onClick={handleCerrarSesion}
             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition"
           >
-            Cerrar sesión
+            Cerrar sesiÃ³n
           </button>
         </div>
       </div>
@@ -1732,9 +1738,9 @@ export default function ComerciosProductosPage() {
   }
 
   return (
-    // Rediseño premium (sidebar interno de la tienda): se envuelve el contenido existente sin tocar nada
-    // de su interior (header, tabla, modales, handlers) — solo se agrega el sidebar como hermano a la
-    // izquierda y "flex-1" al contenedor de siempre. Alcance quirúrgico: cero líneas de lógica tocadas.
+    // RediseÃ±o premium (sidebar interno de la tienda): se envuelve el contenido existente sin tocar nada
+    // de su interior (header, tabla, modales, handlers) â€” solo se agrega el sidebar como hermano a la
+    // izquierda y "flex-1" al contenedor de siempre. Alcance quirÃºrgico: cero lÃ­neas de lÃ³gica tocadas.
     <div className="flex min-h-screen bg-white">
       <SidebarTienda
         nombreComercio={comercio?.name || comercio?.nombre}
@@ -1753,7 +1759,7 @@ export default function ComerciosProductosPage() {
         }
       />
     <div className="flex-1 min-h-screen bg-white text-slate-800 flex flex-col font-sans">
-      {/* Móvil y tablet (< lg): el header crece en altura y sus controles se envuelven en filas; sin sticky para no
+      {/* MÃ³vil y tablet (< lg): el header crece en altura y sus controles se envuelven en filas; sin sticky para no
           ocupar media pantalla. Desde lg vuelve a ser una sola fila de 64 px pegada arriba. */}
       <header className="border-b border-slate-200 bg-white/95 backdrop-blur relative z-40 lg:sticky lg:top-0">
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-8 py-2 lg:py-0 min-h-16 lg:h-16 flex flex-wrap lg:flex-nowrap items-center justify-between gap-x-3 gap-y-2">
@@ -1761,7 +1767,7 @@ export default function ComerciosProductosPage() {
             <button
               type="button"
               onClick={handleCerrarSesion}
-              title="Cerrar sesión"
+              title="Cerrar sesiÃ³n"
               className="w-10 h-10 rounded-2xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition border border-slate-200"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -1804,14 +1810,14 @@ export default function ComerciosProductosPage() {
               <Plus className="w-4 h-4" />
               <span className="hidden xl:inline whitespace-nowrap">Nuevo Producto</span>
             </button>
-            <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-2xl border border-slate-200 cursor-pointer shadow-sm hover:bg-slate-50 transition" title="Si está activo, eliminará los productos que no estén en el Excel">
+            <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-2xl border border-slate-200 cursor-pointer shadow-sm hover:bg-slate-50 transition" title="Si estÃ¡ activo, eliminarÃ¡ los productos que no estÃ©n en el Excel">
               <div className={`w-8 h-5 shrink-0 rounded-full relative transition-colors ${borrarNoIncluidos ? 'bg-[#FE6712]' : 'bg-slate-200'}`}>
                 <div className={`w-4 h-4 bg-white rounded-full shadow-sm absolute top-[2px] transition-all ${borrarNoIncluidos ? 'left-[14px]' : 'left-[2px]'}`} />
               </div>
               <input type="checkbox" checked={borrarNoIncluidos} onChange={(e) => setBorrarNoIncluidos(e.target.checked)} className="hidden" />
               <span className="text-xs font-bold text-slate-600 hidden 2xl:inline whitespace-nowrap">Borrar no incluidos</span>
             </label>
-            <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-2xl border border-slate-200 cursor-pointer shadow-sm hover:bg-slate-50 transition" title="Si está activo, el Excel solo se valida en el servidor y no se guarda ningún cambio">
+            <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-2xl border border-slate-200 cursor-pointer shadow-sm hover:bg-slate-50 transition" title="Si estÃ¡ activo, el Excel solo se valida en el servidor y no se guarda ningÃºn cambio">
               <div className={`w-8 h-5 shrink-0 rounded-full relative transition-colors ${simular ? 'bg-[#FE6712]' : 'bg-slate-200'}`}>
                 <div className={`w-4 h-4 bg-white rounded-full shadow-sm absolute top-[2px] transition-all ${simular ? 'left-[14px]' : 'left-[2px]'}`} />
               </div>
@@ -1869,7 +1875,7 @@ export default function ComerciosProductosPage() {
             Tienda activa: {nombreActivo} <span className="font-medium text-orange-400">#{storeId}</span>
           </span>
           {esModoMaster && (
-            <span className="px-2.5 py-1 rounded-full bg-[#FE6712] text-white text-[10px] font-black tracking-wide" title="Estás operando sobre una tienda distinta a la de tu sesión">
+            <span className="px-2.5 py-1 rounded-full bg-[#FE6712] text-white text-[10px] font-black tracking-wide" title="EstÃ¡s operando sobre una tienda distinta a la de tu sesiÃ³n">
               MODO MASTER
             </span>
           )}
@@ -1882,7 +1888,7 @@ export default function ComerciosProductosPage() {
               type="text"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por código, nombre o categoría..."
+              placeholder="Buscar por cÃ³digo, nombre o categorÃ­a..."
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
             />
           </div>
@@ -1890,13 +1896,13 @@ export default function ComerciosProductosPage() {
             value={filtroCategoria}
             onChange={(e) => setFiltroCategoria(e.target.value)}
             className="w-full sm:w-56 px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]"
-            aria-label="Filtrar por categoría"
+            aria-label="Filtrar por categorÃ­a"
           >
-            <option value="TODAS">Todas las categorías</option>
+            <option value="TODAS">Todas las categorÃ­as</option>
             {categoriasDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <div className="text-xs text-slate-500 font-medium sm:ml-auto">
-            Artículos cargados: <strong className="text-slate-900 font-bold">{productos.length}</strong>
+            ArtÃ­culos cargados: <strong className="text-slate-900 font-bold">{productos.length}</strong>
           </div>
         </div>
 
@@ -1929,20 +1935,20 @@ export default function ComerciosProductosPage() {
             <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200">
               <div>
                 <h3 className="text-sm font-black text-slate-900">
-                  {reporteImportacion.tipo === "simulacion" && "Simulación completada: no se guardó ningún cambio"}
-                  {reporteImportacion.tipo === "real" && "Importación completada"}
+                  {reporteImportacion.tipo === "simulacion" && "SimulaciÃ³n completada: no se guardÃ³ ningÃºn cambio"}
+                  {reporteImportacion.tipo === "real" && "ImportaciÃ³n completada"}
                   {reporteImportacion.tipo === "error" && "No se pudo procesar el archivo"}
                 </h3>
                 <p className="text-[11px] text-slate-400 font-medium mt-0.5">
                   {reporteImportacion.archivo}
-                  {reporteImportacion.tipo === "simulacion" && " · Nada se guardó en Adonis ni en este navegador."}
-                  {reporteImportacion.tipo === "real" && " · Catálogo y fichas técnicas de farmacia sincronizados."}
+                  {reporteImportacion.tipo === "simulacion" && " Â· Nada se guardÃ³ en Adonis ni en este navegador."}
+                  {reporteImportacion.tipo === "real" && " Â· CatÃ¡logo y fichas tÃ©cnicas de farmacia sincronizados."}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setReporteImportacion(null)}
-                aria-label="Cerrar reporte de importación"
+                aria-label="Cerrar reporte de importaciÃ³n"
                 className="w-8 h-8 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 transition shrink-0"
               >
                 <X className="w-4 h-4" />
@@ -2001,8 +2007,8 @@ export default function ComerciosProductosPage() {
               <Boxes className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-slate-900">Catálogo sin productos</h3>
-              <p className="text-xs text-slate-500 mt-1">Sincroniza tu catálogo desde Adonis, carga artículos manualmente o sube el archivo Excel.</p>
+              <h3 className="text-base font-extrabold text-slate-900">CatÃ¡logo sin productos</h3>
+              <p className="text-xs text-slate-500 mt-1">Sincroniza tu catÃ¡logo desde Adonis, carga artÃ­culos manualmente o sube el archivo Excel.</p>
             </div>
             <div className="flex flex-wrap justify-center gap-3 pt-2">
               <button
@@ -2034,8 +2040,8 @@ export default function ComerciosProductosPage() {
                   <tr>
                     <th className="p-4">Foto</th>
                     <th className="p-4">Nombre del Producto</th>
-                    <th className="p-4">Código / SKU</th>
-                    <th className="p-4">Categoría</th>
+                    <th className="p-4">CÃ³digo / SKU</th>
+                    <th className="p-4">CategorÃ­a</th>
                     <th className="p-4">Precio ($ USD)</th>
                     <th className="p-4">Precio (Bs.)</th>
                     <th className="p-4">Stock</th>
@@ -2047,7 +2053,7 @@ export default function ComerciosProductosPage() {
                   {productosFiltrados.length === 0 ? (
                     <tr>
                       <td colSpan="9" className="p-10 text-center text-xs text-slate-400">
-                        No se encontraron productos que coincidan con la búsqueda o el filtro.
+                        No se encontraron productos que coincidan con la bÃºsqueda o el filtro.
                       </td>
                     </tr>
                   ) : (
@@ -2061,7 +2067,7 @@ export default function ComerciosProductosPage() {
                       return (
                         <tr key={item.id} className={`transition ${inactivo ? "bg-slate-50" : "hover:bg-slate-50"}`}>
                           <td className="p-4">
-                            {/* eslint-disable-next-line @next/next/no-img-element -- imagen dinámica (Base64/URL arbitraria), incompatible con next/image sin configurar dominios */}
+                            {/* eslint-disable-next-line @next/next/no-img-element -- imagen dinÃ¡mica (Base64/URL arbitraria), incompatible con next/image sin configurar dominios */}
                             <img
                               src={item.image || IMAGEN_DEFECTO}
                               alt={item.name}
@@ -2073,17 +2079,17 @@ export default function ComerciosProductosPage() {
                             {item.name}
                             {(item.marca || item.presentacion || item.volumen) && (
                               <span className="block mt-0.5 text-[10px] font-semibold text-slate-400 truncate">
-                                {[item.marca, [item.presentacion, item.volumen].filter(Boolean).join(" · ")].filter(Boolean).join(" — ")}
+                                {[item.marca, [item.presentacion, item.volumen].filter(Boolean).join(" Â· ")].filter(Boolean).join(" â€” ")}
                               </span>
                             )}
                           </td>
                           <td className="p-4 text-slate-500 font-medium">{item.code}</td>
-                          <td className="p-4 text-slate-600">{item.categoria || "—"}</td>
+                          <td className="p-4 text-slate-600">{item.categoria || "â€”"}</td>
                           <td className="p-4">
                             <CeldaEditable
                               valor={precio}
                               prefijo="$"
-                              etiqueta={`Precio en dólares de ${item.name}`}
+                              etiqueta={`Precio en dÃ³lares de ${item.name}`}
                               deshabilitado={guardandoFila}
                               onGuardar={(nuevo) => handleEditarPrecio(item, nuevo)}
                             />
@@ -2091,7 +2097,7 @@ export default function ComerciosProductosPage() {
                           <td className="p-4 text-slate-600 font-semibold">
                             {tasa > 0
                               ? `Bs. ${(precio * tasa).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                              : "—"}
+                              : "â€”"}
                           </td>
                           <td className="p-4">
                             <CeldaEditable
@@ -2141,7 +2147,7 @@ export default function ComerciosProductosPage() {
                               <button onClick={() => abrirModalEditar(item)} title="Editar" className="p-2 rounded-xl bg-white hover:bg-orange-50 text-slate-600 hover:text-[#FE6712] transition border border-slate-200">
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
-                              <button onClick={() => handleEliminarProducto(item)} title="Desactivar (baja lógica)" className="p-2 rounded-xl bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition border border-slate-200">
+                              <button onClick={() => handleEliminarProducto(item)} title="Desactivar (baja lÃ³gica)" className="p-2 rounded-xl bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition border border-slate-200">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
@@ -2155,7 +2161,7 @@ export default function ComerciosProductosPage() {
             </div>
             <div className="p-4 border-t border-slate-100 text-xs text-slate-500">
               Mostrando <strong>{productosFiltrados.length}</strong> de <strong>{productos.length}</strong> productos
-              <span className="text-slate-400"> · Edita precio y stock directamente en la tabla: Enter o clic fuera para guardar, Esc para cancelar.</span>
+              <span className="text-slate-400"> Â· Edita precio y stock directamente en la tabla: Enter o clic fuera para guardar, Esc para cancelar.</span>
             </div>
           </div>
         )}
@@ -2200,11 +2206,11 @@ export default function ComerciosProductosPage() {
               {!esPerfilSimple && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">SKU / Código Interno</label>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">SKU / CÃ³digo Interno</label>
                     <input type="text" value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                   </div>
                   <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Código de Barras</label>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">CÃ³digo de Barras</label>
                     <input type="text" value={formData.barcode} onChange={(e) => setFormData({ ...formData, barcode: e.target.value })} placeholder="Escanear o digitar..." className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                   </div>
                 </div>
@@ -2217,17 +2223,17 @@ export default function ComerciosProductosPage() {
 
               {esPerfilSimple ? (
                 <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Categoría</label>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">CategorÃ­a</label>
                   <input type="text" value={formData.categoria} onChange={(e) => setFormData({ ...formData, categoria: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                 </div>
               ) : (
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Categoría</label>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">CategorÃ­a</label>
                     <input type="text" value={formData.categoria} onChange={(e) => setFormData({ ...formData, categoria: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                   </div>
                   <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Subcategoría</label>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">SubcategorÃ­a</label>
                     <input type="text" value={formData.subcategoria} onChange={(e) => setFormData({ ...formData, subcategoria: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                   </div>
                   <div>
@@ -2282,14 +2288,14 @@ export default function ComerciosProductosPage() {
               {!esPerfilSimple && (
                 <div>
                   <div className="flex justify-between text-[11px] font-bold text-slate-600 mb-1">
-                    <span>Descripción</span>
+                    <span>DescripciÃ³n</span>
                     <span className="text-slate-400">{formData.descripcion.length} caracteres</span>
                   </div>
                   <textarea rows="2" value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs resize-none"></textarea>
                 </div>
               )}
 
-              {/* Toppings / Modificadores Opcionales (Gastronomía o General, no en perfil Simple) */}
+              {/* Toppings / Modificadores Opcionales (GastronomÃ­a o General, no en perfil Simple) */}
               {mostrarToppings && !esPerfilSimple && (
                 <div className="pt-3 border-t border-dashed border-slate-200 space-y-2">
                   <label className="text-[11px] font-bold text-slate-600 block">Toppings / Modificadores Opcionales</label>
@@ -2314,7 +2320,7 @@ export default function ComerciosProductosPage() {
                       onClick={handleAgregarTopping}
                       className="px-3 py-2 bg-orange-50 hover:bg-[#FE6712] text-[#FE6712] hover:text-white border border-orange-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0"
                     >
-                      <Plus className="w-3.5 h-3.5" /> Añadir
+                      <Plus className="w-3.5 h-3.5" /> AÃ±adir
                     </button>
                   </div>
                   {formData.toppings.length > 0 && (
@@ -2336,11 +2342,11 @@ export default function ComerciosProductosPage() {
                 </div>
               )}
 
-              {/* Campos Dinámicos por Nicho (no en perfil Simple) */}
+              {/* Campos DinÃ¡micos por Nicho (no en perfil Simple) */}
               {formData.nicho !== "General" && !esPerfilSimple && (
                 <div className="pt-3 border-t border-dashed border-slate-200 space-y-3">
                   <h4 className="text-[11px] font-extrabold text-[#FE6712] uppercase tracking-wider flex items-center gap-1.5">
-                    <LayersIcon className="w-3.5 h-3.5" /> Datos específicos: {formData.nicho}
+                    <LayersIcon className="w-3.5 h-3.5" /> Datos especÃ­ficos: {formData.nicho}
                   </h4>
 
                   {formData.nicho === "Farmacia & Salud" && (
@@ -2351,13 +2357,13 @@ export default function ComerciosProductosPage() {
                           <input type="text" value={formData.principioActivo} onChange={(e) => setFormData({ ...formData, principioActivo: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                         </div>
                         <div>
-                          <label className="text-[11px] font-bold text-slate-600 block mb-1">Concentración / Dosis</label>
+                          <label className="text-[11px] font-bold text-slate-600 block mb-1">ConcentraciÃ³n / Dosis</label>
                           <input type="text" value={formData.concentracion} onChange={(e) => setFormData({ ...formData, concentracion: e.target.value })} placeholder="Ej: 500mg" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="text-[11px] font-bold text-slate-600 block mb-1">Presentación</label>
+                          <label className="text-[11px] font-bold text-slate-600 block mb-1">PresentaciÃ³n</label>
                           <input type="text" value={formData.presentacion} onChange={(e) => setFormData({ ...formData, presentacion: e.target.value })} placeholder="Ej: Caja x 20 tabletas" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                         </div>
                         <div>
@@ -2371,10 +2377,10 @@ export default function ComerciosProductosPage() {
                           <input type="text" value={formData.registroSanitario} onChange={(e) => setFormData({ ...formData, registroSanitario: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                         </div>
                         <div>
-                          <label className="text-[11px] font-bold text-slate-600 block mb-1">Condición de Venta</label>
+                          <label className="text-[11px] font-bold text-slate-600 block mb-1">CondiciÃ³n de Venta</label>
                           <select value={formData.condicionVenta} onChange={(e) => setFormData({ ...formData, condicionVenta: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
                             <option value="Venta Libre">Venta Libre</option>
-                            <option value="Bajo Récipe">Bajo Récipe</option>
+                            <option value="Bajo RÃ©cipe">Bajo RÃ©cipe</option>
                           </select>
                         </div>
                       </div>
@@ -2390,12 +2396,12 @@ export default function ComerciosProductosPage() {
                       </div>
                       <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 cursor-pointer">
                         <input type="checkbox" checked={formData.cadenaFrio} onChange={(e) => setFormData({ ...formData, cadenaFrio: e.target.checked })} className="w-4 h-4 accent-[#FE6712]" />
-                        <Snowflake className="w-3.5 h-3.5 text-cyan-600" /> Requiere Cadena de Frío
+                        <Snowflake className="w-3.5 h-3.5 text-cyan-600" /> Requiere Cadena de FrÃ­o
                       </label>
                     </div>
                   )}
 
-                  {formData.nicho === "Tecnología & Hogar" && (
+                  {formData.nicho === "TecnologÃ­a & Hogar" && (
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -2403,7 +2409,7 @@ export default function ComerciosProductosPage() {
                           <input type="text" value={formData.modelo} onChange={(e) => setFormData({ ...formData, modelo: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                         </div>
                         <div>
-                          <label className="text-[11px] font-bold text-slate-600 block mb-1">Especificación Clave</label>
+                          <label className="text-[11px] font-bold text-slate-600 block mb-1">EspecificaciÃ³n Clave</label>
                           <input type="text" value={formData.especificacionClave} onChange={(e) => setFormData({ ...formData, especificacionClave: e.target.value })} placeholder="Ej: 12.000 BTU / 8GB RAM" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                         </div>
                       </div>
@@ -2417,7 +2423,7 @@ export default function ComerciosProductosPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="text-[11px] font-bold text-slate-600 block mb-1">Condición</label>
+                          <label className="text-[11px] font-bold text-slate-600 block mb-1">CondiciÃ³n</label>
                           <select value={formData.condicion} onChange={(e) => setFormData({ ...formData, condicion: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
                             <option value="Nuevo">Nuevo</option>
                             <option value="Refurbished">Refurbished</option>
@@ -2425,17 +2431,17 @@ export default function ComerciosProductosPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="text-[11px] font-bold text-slate-600 block mb-1">Meses de Garantía</label>
+                          <label className="text-[11px] font-bold text-slate-600 block mb-1">Meses de GarantÃ­a</label>
                           <input type="number" value={formData.mesesGarantia} onChange={(e) => setFormData({ ...formData, mesesGarantia: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {formData.nicho === "Gastronomía & Heladería" && (
+                  {formData.nicho === "GastronomÃ­a & HeladerÃ­a" && (
                     <div className="space-y-3">
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Área de Despacho / Comanda</label>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Ãrea de Despacho / Comanda</label>
                         <select value={formData.areaDespacho} onChange={(e) => setFormData({ ...formData, areaDespacho: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
                           <option value="Cocina">Cocina</option>
                           <option value="Barra">Barra</option>
@@ -2446,12 +2452,12 @@ export default function ComerciosProductosPage() {
                         <div className="flex items-center justify-between mb-1.5">
                           <label className="text-[11px] font-bold text-slate-600">Variantes / Sabores</label>
                           <button type="button" onClick={handleAgregarVariante} className="text-[11px] font-bold text-[#FE6712] hover:underline flex items-center gap-1">
-                            <Plus className="w-3.5 h-3.5" /> Añadir sabor
+                            <Plus className="w-3.5 h-3.5" /> AÃ±adir sabor
                           </button>
                         </div>
                         <div className="space-y-2">
                           {formData.variantes.length === 0 && (
-                            <p className="text-[11px] text-slate-400 italic">Sin sabores añadidos. El stock total se calculará al agregar variantes.</p>
+                            <p className="text-[11px] text-slate-400 italic">Sin sabores aÃ±adidos. El stock total se calcularÃ¡ al agregar variantes.</p>
                           )}
                           {formData.variantes.map((v, idx) => (
                             <div key={idx} className="flex items-center gap-2">
@@ -2497,7 +2503,7 @@ export default function ComerciosProductosPage() {
                   {formData.nicho === "Supermercado / Hipermercado & Licores" && (
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Presentación</label>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">PresentaciÃ³n</label>
                         <input type="text" value={formData.presentacion} onChange={(e) => setFormData({ ...formData, presentacion: e.target.value })} placeholder="Ej: Botella, Lata, Caja x 6" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
                       </div>
                       <div>
@@ -2513,14 +2519,14 @@ export default function ComerciosProductosPage() {
               {formData.metadataVariants.length > 0 && (
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold text-slate-600 block">Disponibilidad de Variantes</label>
-                  <p className="text-[11px] text-slate-400 -mt-1">Solo enciende o apaga cada opción; este panel no maneja cantidades de stock por variante.</p>
+                  <p className="text-[11px] text-slate-400 -mt-1">Solo enciende o apaga cada opciÃ³n; este panel no maneja cantidades de stock por variante.</p>
                   <div className="space-y-2">
                     {formData.metadataVariants.map((grupo, gi) => (
                       <div key={gi} className="border border-slate-200 rounded-xl p-2.5 space-y-1.5">
                         <p className="text-[11px] font-bold text-slate-700">{grupo.name || grupo.title || grupo.label || `Grupo ${gi + 1}`}</p>
                         {(grupo.items || []).map((item, ii) => {
                           const activo = item.status !== "INACTIVE";
-                          const nombreItem = item.name || item.label || item.title || item.code || `Opción ${ii + 1}`;
+                          const nombreItem = item.name || item.label || item.title || item.code || `OpciÃ³n ${ii + 1}`;
                           return (
                             <div key={ii} className="flex items-center justify-between gap-2 pl-1">
                               <span className="text-xs text-slate-700 truncate">{nombreItem}</span>
@@ -2562,7 +2568,7 @@ export default function ComerciosProductosPage() {
           <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-lg font-black text-slate-900">Vista Previa · Marketplace Core v2</h3>
+                <h3 className="text-lg font-black text-slate-900">Vista Previa Â· Marketplace Core v2</h3>
                 <p className="text-xs text-slate-400">{productoJsonActual.name}</p>
               </div>
               <button onClick={() => setModalJsonAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center">
@@ -2584,3 +2590,5 @@ export default function ComerciosProductosPage() {
     </div>
   );
 }
+
+

@@ -1,8 +1,8 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save, Check, Hash, Store, MapPin, User, Phone } from "lucide-react";
-import { obtenerTokenComercio, obtenerUsuarioComercio } from "@/lib/commerceServices";
+import { Loader2, Save, Check, Hash, Store, MapPin, User, Phone, Briefcase } from "lucide-react";
+import { obtenerTokenComercio, obtenerUsuarioComercio, actualizarTiendaComercio } from "@/lib/commerceServices";
 import SidebarTienda from "@/components/comercios/SidebarTienda";
 
 // Vista de Configuración (rediseño premium, 100% nueva — no existía ninguna versión anterior de este
@@ -50,7 +50,9 @@ export default function ConfiguracionComercioPage() {
   const storeId = comercio?.entityId || comercio?.storeId || comercio?.store?.id || comercio?.comercio_id || comercio?.id || null;
 
   const [datosLocales, setDatosLocales] = useState({ direccion: "", responsable: "", telefono: "" });
+  const [nicho, setNicho] = useState("General");
   const [guardado, setGuardado] = useState(false);
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     if (!storeId) return;
@@ -60,14 +62,35 @@ export default function ConfiguracionComercioPage() {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente y una vez se conoce storeId
         setDatosLocales((prev) => ({ ...prev, ...guardadoPrevio }));
       }
+      
+      const nichoPrevio = localStorage.getItem(`store_nicho_${storeId}`);
+      if (nichoPrevio) {
+        setNicho(nichoPrevio);
+      }
     } catch (e) {
       // localStorage corrupto o inaccesible: se ignora y queda el formulario en blanco
     }
   }, [storeId]);
 
-  const handleGuardar = (e) => {
+  const handleGuardar = async (e) => {
     e.preventDefault();
+    setGuardando(true);
+    
+    // Guardar en localStorage
     localStorage.setItem(claveConfigLocal(storeId), JSON.stringify(datosLocales));
+    localStorage.setItem(`store_nicho_${storeId}`, nicho);
+    
+    // Intentar guardar en backend de AdonisJS
+    try {
+      // Solo enviamos el nicho, o si Adonis soporta otros campos los mandamos.
+      // Ya que no sabemos la estructura, enviamos el nicho como un campo extra.
+      await actualizarTiendaComercio(storeId, { nicho }, token);
+    } catch (err) {
+      // Fallo silencioso como indica la instrucción, usamos el respaldo en localStorage
+      console.warn("No se pudo guardar el nicho en el servidor, usando respaldo local.", err);
+    }
+    
+    setGuardando(false);
     setGuardado(true);
     setTimeout(() => setGuardado(false), 2000);
   };
@@ -108,7 +131,26 @@ export default function ConfiguracionComercioPage() {
             </p>
           </div>
 
-          <form onSubmit={handleGuardar} className="rounded-xl bg-white shadow-sm border border-gray-100 p-6 space-y-4">
+          <form onSubmit={handleGuardar} className="rounded-xl bg-white shadow-sm border border-gray-100 p-6 space-y-6">
+            
+            <div className="space-y-4">
+              <h2 className="text-xs font-black text-slate-700 uppercase tracking-wide">Nicho / Rubro del Comercio</h2>
+              <Campo etiqueta="Seleccione el rubro de su tienda" icono={Briefcase}>
+                <select
+                  value={nicho}
+                  onChange={(e) => setNicho(e.target.value)}
+                  className={claseInput}
+                >
+                  <option value="General">General</option>
+                  <option value="Farmacia">Farmacia</option>
+                  <option value="Supermercado & Licores">Supermercado & Licores</option>
+                  <option value="Tecnología">Tecnología</option>
+                  <option value="Gastronomía & Heladería">Gastronomía & Heladería</option>
+                  <option value="Granel">Granel</option>
+                </select>
+              </Campo>
+            </div>
+
             <h2 className="text-xs font-black text-slate-700 uppercase tracking-wide">Datos de contacto</h2>
             <Campo etiqueta="Dirección" icono={MapPin}>
               <input
@@ -153,9 +195,11 @@ export default function ConfiguracionComercioPage() {
               )}
               <button
                 type="submit"
-                className="px-5 py-2.5 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                disabled={guardando}
+                className="px-5 py-2.5 bg-[#FE6712] hover:bg-[#ea580c] disabled:opacity-70 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
               >
-                <Save className="w-4 h-4" /> Guardar
+                {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {guardando ? "Guardando..." : "Guardar"}
               </button>
             </div>
           </form>

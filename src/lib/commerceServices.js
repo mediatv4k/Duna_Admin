@@ -172,3 +172,31 @@ export async function subirExcelBatchComercio(storeId, file, token, deleteMissin
 
   return datos;
 }
+
+/**
+ * PUT /store/:storeId — Intenta actualizar la configuración de la tienda.
+ */
+export async function actualizarTiendaComercio(storeId, datos, token) {
+  const res = await fetch(`${ADONIS_BASE}/store/${storeId}`, {
+    method: "PUT",
+    headers: {
+      apiKey: ADONIS_API_KEY,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(datos),
+  });
+
+  let resData = null;
+  try {
+    resData = await res.json();
+  } catch (e) {
+    resData = null;
+  }
+
+  if (!res.ok || !resData || resData.code !== 1) {
+    throw new Error(textoMensaje(resData?.message) || `Error al actualizar la tienda (HTTP ${res.status}).`);
+  }
+
+  return resData;
+}
