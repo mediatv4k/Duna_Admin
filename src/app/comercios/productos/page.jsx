@@ -342,7 +342,7 @@ function mapearProductoComercio(item, idx, storeId) {
   // DEL PRODUCTO (obtenerNamespacePorNicho), no de la tienda — ver el porqué junto a esa función. Es la
   // fuente de verdad cuando existe; localStorage queda como respaldo para productos que aún no se han
   // vuelto a guardar con el esquema nuevo (ver handleGuardarProducto).
-  const nichoConfigurado = typeof window !== 'undefined' && storeId ? localStorage.getItem(store_nicho_) : null;
+  const nichoConfigurado = typeof window !== 'undefined' && storeId ? localStorage.getItem(`store_nicho_${storeId}`) : null;
   const nichoProducto = meta.nicho || nichoConfigurado || "General";
   const namespaceFarmacia = obtenerNamespacePorNicho(nichoProducto);
   const fichaAdonis = (namespaceFarmacia && meta[namespaceFarmacia]) || null;
