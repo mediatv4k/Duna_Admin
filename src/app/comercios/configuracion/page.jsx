@@ -357,11 +357,11 @@ export default function ConfiguracionComercioPage() {
 
             {/* Métodos de pago: mismo vocabulario que /pos, para que lo configurado aquí describa
                 exactamente lo que el cajero puede cobrar. */}
-            <div className="pt-2 border-t border-dashed border-slate-200 space-y-3">
+            <div className="w-full text-left pt-2 border-t border-dashed border-slate-200 space-y-3">
               <h2 className="text-xs font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
                 <CreditCard className="w-3.5 h-3.5 text-[#FE6712]" /> Métodos de Pago Aceptados
               </h2>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap justify-start gap-2 text-left">
                 {METODOS_PAGO_DISPONIBLES.map((metodo) => {
                   const activo = datosLocales.metodosPago.includes(metodo);
                   return (
@@ -386,7 +386,7 @@ export default function ConfiguracionComercioPage() {
 
             {/* Horario de atención: isOpen no viene del backend, se estima localmente comparando la
                 hora del navegador contra este horario — se etiqueta como estimación, no como dato oficial. */}
-            <div className="pt-2 border-t border-dashed border-slate-200 space-y-3">
+            <div className="w-full text-left pt-2 border-t border-dashed border-slate-200 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <h2 className="text-xs font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-[#FE6712]" /> Horario de Atención
@@ -397,11 +397,11 @@ export default function ConfiguracionComercioPage() {
                   {abiertoAhora ? "Abierto ahora (estimado)" : "Cerrado ahora (estimado)"}
                 </span>
               </div>
-              <div className="space-y-1.5">
+              <div className="w-full space-y-1.5">
                 {DIAS_SEMANA.map((dia) => {
                   const config = datosLocales.horario[dia];
                   return (
-                    <div key={dia} className="flex items-center gap-3 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                    <div key={dia} className="w-full flex items-center gap-3 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
                       <button
                         type="button"
                         role="switch"
