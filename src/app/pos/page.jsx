@@ -607,7 +607,7 @@ export default function POSPage() {
       )
     : [];
   // Solo se ofrecen productos con existencias: evita ventas en negativo en el mostrador
-  const tieneExistencias = (p) => Number(p.stock) > 0 && !p.outOfStock;
+  const tieneExistencias = (p) => p.status !== "INACTIVE" && Number(p.stock) > 0 && !p.outOfStock;
   const productosFiltradosCombo = coincidenciasBusqueda.filter(tieneExistencias).slice(0, 8);
   const soloAgotadosEnBusqueda = coincidenciasBusqueda.length > 0 && productosFiltradosCombo.length === 0;
 
@@ -1297,6 +1297,11 @@ export default function POSPage() {
       (p.code || "").toLowerCase().includes(q) ||
       (p.sku || "").toLowerCase().includes(q) ||
       (p.barcode || "").toLowerCase().includes(q);
+  }).sort((a, b) => {
+    const aIn = a.status === "INACTIVE";
+    const bIn = b.status === "INACTIVE";
+    if (aIn === bIn) return 0;
+    return aIn ? 1 : -1;
   });
 
   // Desglose fiscal informativo: los precios del catálogo se consideran con IVA 16% incluido
