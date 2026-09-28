@@ -33,7 +33,11 @@ const ITEMS_VENDEDOR = [
   { id: "cierreCaja", href: "/comercios/cierre-caja", label: "Cierre de Caja", icono: Wallet },
 ];
 
-export default function SidebarTienda({ nombreComercio, storeId, selectorTienda }) {
+// onCerrarSesion (opcional): páginas fuera de la sesión del Portal de Comercios (ej. /reportes, que usa
+// el login del ERP principal vía AuthContext, no obtenerTokenComercio) deben pasar su propio logout —
+// si no, este botón cerraría una sesión de comercio que ni siquiera existe y mandaría a /comercios/login
+// a un administrador que en realidad entró por /login. Sin este prop, el comportamiento no cambia.
+export default function SidebarTienda({ nombreComercio, storeId, selectorTienda, onCerrarSesion }) {
   const pathname = usePathname();
   const router = useRouter();
   const [usuario, setUsuario] = useState(null);
@@ -44,6 +48,10 @@ export default function SidebarTienda({ nombreComercio, storeId, selectorTienda 
   }, []);
 
   const handleCerrarSesion = () => {
+    if (onCerrarSesion) {
+      onCerrarSesion();
+      return;
+    }
     cerrarSesionComercio();
     router.replace("/comercios/login");
   };

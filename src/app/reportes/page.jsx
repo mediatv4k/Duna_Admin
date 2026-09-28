@@ -1,12 +1,14 @@
 "use client";
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Lock, TrendingUp, Bike, Store, CreditCard, Wallet,
   Award, Loader2, DollarSign, Calendar, ArrowUpCircle, ArrowDownCircle,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useCurrency } from "@/context/CurrencyContext";
+import SidebarTienda from "@/components/comercios/SidebarTienda";
 
 // ==============================================================================
 // FUENTE DE DATOS (DEMO — SIN CONECTAR A ADONIS)
@@ -163,8 +165,18 @@ function TarjetaKpi({ etiqueta, valor, subvalor, icono: Icono, acento = "text-sl
 }
 
 export default function ReportesPage() {
-  const { isAdmin, loading: cargandoAuth } = useAuth();
+  const { isAdmin, loading: cargandoAuth, logout } = useAuth();
   const { tasaBcv } = useCurrency();
+  const router = useRouter();
+
+  // Esta página se llega tanto desde el dashboard del ERP principal como desde el enlace "Reportes"
+  // del sidebar del Portal de Comercios — pero su sesión real es siempre la del ERP (useAuth/isAdmin
+  // arriba), nunca la del portal de comercios. Por eso el sidebar recibe su propio logout: el que trae
+  // por defecto cerraría una sesión de comercio inexistente y mandaría a /comercios/login en vez de /login.
+  const handleCerrarSesionErp = () => {
+    logout();
+    router.replace("/login");
+  };
 
   // Regla de Oro 2 (No Destrucción de Metadata) usada también aquí como guardia general:
   // los datos vienen de una función reemplazable, nunca de un objeto mutado a mano.
@@ -214,7 +226,10 @@ export default function ReportesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-slate-800 flex flex-col font-sans">
+    <div className="flex min-h-screen bg-white">
+      <SidebarTienda onCerrarSesion={handleCerrarSesionErp} />
+
+      <div className="flex-1 min-h-screen bg-white text-slate-800 flex flex-col font-sans">
       <header className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 flex items-center gap-3">
           <Link href="/" title="Volver al inicio" className="w-10 h-10 rounded-2xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition border border-slate-200">
@@ -400,6 +415,7 @@ export default function ReportesPage() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }
