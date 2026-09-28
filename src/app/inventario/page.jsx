@@ -6,11 +6,12 @@ import {
   Boxes, Upload, Download, ArrowLeft, Search,
   Plus, Edit3, Trash2, X, Check, Camera,
   Snowflake, IceCream2, Cpu, Pill, Scale, Layers as LayersIcon,
-  Cloud, FileJson, RefreshCw
+  Cloud, FileJson, RefreshCw, Store, ChevronDown, Loader2
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useBusinessProfile } from "@/context/BusinessProfileContext";
 import { useUser } from "@/context/UserContext";
+import { useAuth } from "@/context/AuthContext";
 
 const NICHOS = [
   "General",
@@ -65,6 +66,38 @@ async function cargarTasaAdonis(storeId, signal) {
   const info = await pedirJsonAdonis(`${ADONIS_BASE}/store/${storeId}/payment/info`, signal);
   return Number(info?.data?.store?.referenceRateValue) || 0;
 }
+
+// GET /store: lista de tiendas del holding (Papá Helado, Farmacia, etc.) para el selector multitienda.
+// Mismo endpoint ya verificado contra el backend real desde el Portal de Comercios (2026-09-27): con solo
+// apiKey responde 401 "Big customer mismatch" — exige Authorization: Bearer de una sesión real. Aquí se
+// usa el token del ERP interno (useAuth().user.token, del login real contra Adonis). No se importa
+// src/lib/commerceServices.js: ese módulo está aislado a propósito del ERP interno, así que este fetch
+// se duplica aquí, igual que ya se duplica cargarCatalogoAdonis frente a su equivalente del portal.
+// La forma exacta de la respuesta de /store no está confirmada contra el backend real (no hay Bearer de
+// prueba disponible en esta sesión), así que se busca el arreglo en las envolturas habituales.
+async function cargarTiendasAdonis(token, signal) {
+  const res = await fetch(`${ADONIS_BASE}/store`, {
+    headers: { ...ADONIS_HEADERS, Authorization: `Bearer ${token}` },
+    signal,
+  });
+  let datos = null;
+  try { datos = await res.json(); } catch (e) { datos = null; }
+  if (!res.ok || !datos || (datos.code !== undefined && datos.code !== 1)) {
+    const mensaje = typeof datos?.message === "object" ? JSON.stringify(datos.message) : datos?.message;
+    throw new Error(mensaje || `Adonis respondió HTTP ${res.status} al listar las tiendas.`);
+  }
+  const lista = [datos, datos.data, datos.data?.stores, datos.data?.data, datos.stores].find(Array.isArray) || [];
+  const vistos = new Set();
+  return lista
+    .map((t) => {
+      const id = t?.id ?? t?._id;
+      return { id, nombre: String(t?.name ?? t?.nombre ?? (id != null ? `Tienda #${id}` : "")).trim() };
+    })
+    .filter((t) => t.id != null && t.nombre && !vistos.has(String(t.id)) && vistos.add(String(t.id)))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
+}
+
+const TIENDA_TODAS = "TODAS";
 
 function nombreCategoriaAdonis(item) {
   return item.category?.name || (typeof item.category === "string" ? item.category : "") || item.internalCategory || "";
@@ -246,13 +279,131 @@ function buildMarketplaceProductPayload(producto) {
   };
 }
 
+// Selector multitienda del inventario: combobox anclado a su botón (sin overlay ni modal), con "Todas las
+// tiendas" fija arriba de la lista. Autocontenido en este archivo (no se importa el equivalente del Portal
+// de Comercios, que está aislado a propósito del ERP interno).
+function SelectorTiendaInventario({ tiendas, activaId, nombreActivo, cargando, error, onReintentar, onSeleccionar, deshabilitado }) {
+  const [abierto, setAbierto] = useState(false);
+  const contenedorRef = useRef(null);
+
+  useEffect(() => {
+    if (!abierto) return undefined;
+    const alPresionar = (e) => {
+      if (contenedorRef.current && !contenedorRef.current.contains(e.target)) setAbierto(false);
+    };
+    document.addEventListener("mousedown", alPresionar);
+    return () => document.removeEventListener("mousedown", alPresionar);
+  }, [abierto]);
+
+  const elegir = (id) => {
+    setAbierto(false);
+    onSeleccionar(id);
+  };
+
+  return (
+    <div ref={contenedorRef} className="relative">
+      <button
+        type="button"
+        disabled={deshabilitado}
+        onClick={() => setAbierto((a) => !a)}
+        aria-haspopup="listbox"
+        aria-expanded={abierto}
+        title="Cambiar de tienda o ver el holding consolidado"
+        className="flex items-center gap-1.5 max-w-[220px] px-2 py-0.5 rounded-lg border border-slate-200 bg-white hover:border-[#FE6712] text-[11px] font-bold text-slate-600 transition disabled:opacity-60"
+      >
+        <Store className="w-3 h-3 shrink-0 text-[#FE6712]" />
+        <span className="truncate">{nombreActivo}</span>
+        <ChevronDown className="w-3 h-3 shrink-0 text-slate-400" />
+      </button>
+
+      {abierto && (
+        <div className="absolute left-0 top-full mt-1 z-50 w-64 max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden" role="listbox">
+          <button
+            type="button"
+            onClick={() => elegir(TIENDA_TODAS)}
+            className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs border-b border-slate-100 ${activaId === TIENDA_TODAS ? "bg-orange-50 font-black text-[#FE6712]" : "font-bold text-slate-700 hover:bg-slate-50"}`}
+          >
+            Todas las tiendas (Holding Global)
+            {activaId === TIENDA_TODAS && <Check className="w-3.5 h-3.5 text-[#FE6712]" />}
+          </button>
+          <div className="max-h-56 overflow-y-auto py-1">
+            {cargando && <p className="px-3 py-3 text-xs text-slate-400 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando tiendas...</p>}
+            {!cargando && error && (
+              <div className="px-3 py-3 text-xs">
+                <p className="font-bold text-rose-700">No se pudo cargar la lista de tiendas.</p>
+                <p className="text-slate-500 mt-0.5 break-words">{error}</p>
+                <button type="button" onClick={onReintentar} className="mt-2 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-bold text-slate-600">Reintentar</button>
+              </div>
+            )}
+            {!cargando && !error && tiendas.length === 0 && (
+              <p className="px-3 py-3 text-xs text-slate-400">Sin otras tiendas listadas.</p>
+            )}
+            {tiendas.map((t) => {
+              const activa = String(t.id) === String(activaId);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="option"
+                  aria-selected={activa}
+                  onClick={() => elegir(String(t.id))}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left text-xs ${activa ? "font-black text-[#FE6712] bg-orange-50" : "font-medium text-slate-700 hover:bg-slate-50"}`}
+                >
+                  <span className="truncate">{t.nombre}</span>
+                  {activa && <Check className="w-3 h-3 text-[#FE6712] shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InventarioPage() {
   const { modoMoneda, tasaBcv } = useCurrency();
   const { perfil } = useBusinessProfile();
   const { usuario } = useUser();
-  // Multi-tenant: tienda activa del usuario (storeId / comercio_id); por defecto Farma D'una Virtual
-  const storeId = String(usuario?.storeId || usuario?.comercio_id || STORE_ID_DEFECTO);
+  const { user: usuarioAuth } = useAuth();
+  // Multi-tenant: tienda del usuario (storeId / comercio_id); por defecto Farma D'una Virtual. Es el
+  // valor de arranque del selector — comportamiento idéntico al de antes de este selector si nadie lo toca.
+  const storeIdDefecto = String(usuario?.storeId || usuario?.comercio_id || STORE_ID_DEFECTO);
+  const [storeIdActivo, setStoreIdActivo] = useState(null);
+  const storeId = storeIdActivo ?? storeIdDefecto;
+  const modoConsolidado = storeId === TIENDA_TODAS;
   const esPerfilSimple = perfil === "SIMPLE";
+
+  // Selector multitienda: lista de sucursales del holding (GET /store, requiere el Bearer del ERP)
+  const [tiendas, setTiendas] = useState([]);
+  const [cargandoTiendas, setCargandoTiendas] = useState(true);
+  const [errorTiendas, setErrorTiendas] = useState("");
+  const [recargaTiendas, setRecargaTiendas] = useState(0);
+
+  useEffect(() => {
+    if (!usuarioAuth?.token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- no hay sesión real de Adonis todavía (bootstrap): sin token no hay nada que pedir
+      setCargandoTiendas(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    cargarTiendasAdonis(usuarioAuth.token, controller.signal)
+      .then((lista) => {
+        if (controller.signal.aborted) return;
+        setTiendas(lista);
+        setErrorTiendas("");
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        console.error(err);
+        setErrorTiendas(err.message || "No se pudieron listar las tiendas del holding.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCargandoTiendas(false);
+      });
+    return () => controller.abort();
+  }, [usuarioAuth?.token, recargaTiendas]);
+
   const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("TODAS");
@@ -271,26 +422,80 @@ export default function InventarioPage() {
   const [modalJsonAbierto, setModalJsonAbierto] = useState(false);
   const [productoJsonActual, setProductoJsonActual] = useState(null);
 
-  // Carga en vivo desde AdonisJS (catálogo + tasa oficial) de la tienda activa
+  // Carga en vivo desde AdonisJS (catálogo + tasa oficial): de la tienda activa, o de TODAS las tiendas
+  // del holding consolidadas en una sola tabla si el selector está en "Todas las tiendas".
   useEffect(() => {
+    // En modo consolidado se espera a que la lista de tiendas termine de cargar antes de pedir catálogos
+    if (modoConsolidado && tiendas.length === 0) return undefined;
     const controller = new AbortController();
-    Promise.allSettled([cargarCatalogoAdonis(storeId, controller.signal), cargarTasaAdonis(storeId, controller.signal)])
-      .then(([catalogo, tasa]) => {
+    const idsTiendas = modoConsolidado ? tiendas.map((t) => String(t.id)) : [storeId];
+
+    Promise.allSettled(idsTiendas.map((id) => cargarCatalogoAdonis(id, controller.signal)))
+      .then((resultados) => {
         if (controller.signal.aborted) return;
-        if (catalogo.status === "fulfilled") {
-          setProductos(catalogo.value.map(mapearProductoAdonis));
-          setError("");
+        const consolidados = [];
+        let huboExito = false;
+        let huboFallo = false;
+        resultados.forEach((r, i) => {
+          if (r.status === "fulfilled") {
+            huboExito = true;
+            if (modoConsolidado) {
+              const tiendaInfo = tiendas[i];
+              r.value.forEach((item) => consolidados.push({ ...mapearProductoAdonis(item), _tiendaId: tiendaInfo.id, _tiendaNombre: tiendaInfo.nombre }));
+            } else {
+              r.value.forEach((item) => consolidados.push(mapearProductoAdonis(item)));
+            }
+          } else {
+            huboFallo = true;
+            console.error(r.reason);
+          }
+        });
+        if (huboExito) {
+          setProductos(consolidados);
+          setError(huboFallo ? "Algunas tiendas no respondieron; se muestran las que sí." : "");
         } else {
-          console.error(catalogo.reason);
           setError("No se pudo cargar el catálogo desde Adonis. Verifica tu conexión e intenta de nuevo.");
         }
-        if (tasa.status === "fulfilled") setTasaAdonis(tasa.value);
       })
       .finally(() => {
         if (!controller.signal.aborted) setCargando(false);
       });
+
+    // Tasa oficial: en modo consolidado se usa la tasa BCV general (CurrencyContext) como referencia
+    // única, para no multiplicar una llamada de tasa por cada tienda del holding.
+    if (!modoConsolidado) {
+      cargarTasaAdonis(storeId, controller.signal)
+        .then((t) => { if (!controller.signal.aborted) setTasaAdonis(t); })
+        .catch(() => {});
+    } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza con el cambio a modo consolidado: usa tasaBcv (CurrencyContext) como referencia única en vez de la tasa de una sola tienda
+      setTasaAdonis(0);
+    }
+
     return () => controller.abort();
-  }, [storeId, recarga]);
+  }, [storeId, recarga, modoConsolidado, tiendas]);
+
+  const handleReintentarTiendas = () => {
+    setErrorTiendas("");
+    setCargandoTiendas(true);
+    setRecargaTiendas((n) => n + 1);
+  };
+
+  // Cambio de tienda (o "Todas las tiendas"): el efecto de catálogo se dispara solo por su dependencia en
+  // storeId/modoConsolidado y cancela la petición anterior. Se limpian filtros y avisos de la tienda previa.
+  const handleCambiarTienda = (id) => {
+    if (id === storeId) return;
+    setStoreIdActivo(id);
+    setProductos([]);
+    setBusqueda("");
+    setFiltroCategoria("TODAS");
+    setError("");
+    setCargando(true);
+  };
+
+  const nombreTiendaActiva = modoConsolidado
+    ? "Todas las tiendas"
+    : tiendas.find((t) => String(t.id) === String(storeId))?.nombre || `Tienda #${storeId}`;
 
   // Altas, ediciones, importaciones y bajas operan sobre el catálogo en memoria (Adonis es la única fuente de verdad)
   const actualizarProductos = (nuevos) => {
@@ -673,7 +878,19 @@ export default function InventarioPage() {
                 <img src="/logo-duna-admin.png" alt="D'una Admin" className="h-8 w-auto object-contain" />
                 <span className="text-[11px] bg-orange-50 text-[#FE6712] px-2.5 py-0.5 rounded-full font-bold border border-orange-200">INVENTARIO</span>
               </Link>
-              <p className="text-[11px] text-slate-400 font-medium">Catálogo sincronizado con Adonis y Firestore</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <p className="text-[11px] text-slate-400 font-medium">Catálogo sincronizado con Adonis y Firestore ·</p>
+                <SelectorTiendaInventario
+                  tiendas={tiendas}
+                  activaId={storeId}
+                  nombreActivo={nombreTiendaActiva}
+                  cargando={cargandoTiendas}
+                  error={errorTiendas}
+                  onReintentar={handleReintentarTiendas}
+                  onSeleccionar={handleCambiarTienda}
+                  deshabilitado={cargando}
+                />
+              </div>
             </div>
           </div>
 
@@ -791,6 +1008,7 @@ export default function InventarioPage() {
                     <th className="p-4">Foto</th>
                     <th className="p-4">Nombre del Producto</th>
                     <th className="p-4">Código / SKU</th>
+                    {modoConsolidado && <th className="p-4">Tienda</th>}
                     <th className="p-4">Categoría</th>
                     <th className="p-4">Precio ($ USD)</th>
                     <th className="p-4">Precio (Bs.)</th>
@@ -802,7 +1020,7 @@ export default function InventarioPage() {
                 <tbody className="divide-y divide-slate-100">
                   {productosFiltrados.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="p-10 text-center text-xs text-slate-400">
+                      <td colSpan={modoConsolidado ? 10 : 9} className="p-10 text-center text-xs text-slate-400">
                         No se encontraron productos que coincidan con la búsqueda o el filtro.
                       </td>
                     </tr>
@@ -811,7 +1029,7 @@ export default function InventarioPage() {
                       const precio = Number(item.price) || 0;
                       const agotado = estaAgotado(item);
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50 transition">
+                        <tr key={modoConsolidado ? `${item._tiendaId}-${item.id}` : item.id} className="hover:bg-slate-50 transition">
                           <td className="p-4">
                             {/* eslint-disable-next-line @next/next/no-img-element -- imagen dinámica (Base64/URL arbitraria), incompatible con next/image sin configurar dominios */}
                             <img
@@ -823,6 +1041,13 @@ export default function InventarioPage() {
                           </td>
                           <td className="p-4 font-bold text-slate-800 max-w-xs">{item.name}</td>
                           <td className="p-4 text-slate-500 font-medium">{item.code}</td>
+                          {modoConsolidado && (
+                            <td className="p-4">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+                                {item._tiendaNombre}
+                              </span>
+                            </td>
+                          )}
                           <td className="p-4 text-slate-600">{item.categoria || "—"}</td>
                           <td className="p-4 font-black text-slate-900">${precio.toFixed(2)}</td>
                           <td className="p-4 text-slate-600 font-semibold">
