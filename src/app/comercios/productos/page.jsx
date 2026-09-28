@@ -17,11 +17,11 @@ import SidebarTienda from "@/components/comercios/SidebarTienda";
 
 const NICHOS = [
   "General",
-  "Farmacia & Salud",
-  "Tecnología & Hogar",
+  "Farmacia, Salud & Cuidado Personal",
+  "Tecnología, Hogar & Ferretería",
   "Gastronomía & Heladería",
   "Granel / Peso",
-  "Supermercado / Hipermercado & Licores",
+  "Supermercado, Bodegones & Licores",
   "Moda, Calzado & Perfumería",
 ];
 
@@ -206,7 +206,7 @@ async function subirImagenComercio(idUsuario, archivo, token, onProgreso) {
 // hay nombre de namespace que inventar para ellos todavía — devuelve null a propósito en vez de un nombre
 // no verificado ("alimentos", "tecnologia", etc.), para no fabricar un contrato con Adonis que no existe.
 const NAMESPACES_POR_NICHO = {
-  "Farmacia & Salud": "farmacia",
+  "Farmacia, Salud & Cuidado Personal": "farmacia",
 };
 
 function obtenerNamespacePorNicho(nicho) {
@@ -415,7 +415,7 @@ const FORM_INICIAL = {
   image: "",
   descripcion: "",
   nicho: "General",
-  // Farmacia & Salud
+  // Farmacia, Salud & Cuidado Personal
   principioActivo: "",
   concentracion: "",
   presentacion: "",
@@ -425,7 +425,7 @@ const FORM_INICIAL = {
   cadenaFrio: false,
   lote: "",
   fechaVencimiento: "",
-  // Tecnología & Hogar
+  // Tecnología, Hogar & Ferretería
   modelo: "",
   especificacionClave: "",
   voltaje: "110V",
@@ -440,7 +440,7 @@ const FORM_INICIAL = {
   metadataVariants: [],
   // Granel / Peso
   unidadMedida: "kg",
-  // Supermercado / Hipermercado & Licores (reutiliza "presentacion" y el campo universal "marca")
+  // Supermercado, Bodegones & Licores (reutiliza "presentacion" y el campo universal "marca")
   volumen: "",
 };
 
@@ -557,7 +557,7 @@ function tieneAlgunCampoFarmacia(campos) {
 
 // Mismo motivo que extraerCamposFarmaciaExcel: el batch de Adonis tampoco persiste de forma confiable
 // estas columnas universales de consumo masivo (Marca, Presentación, Volumen, Código de Barras),
-// aplica a cualquier nicho (no solo Supermercado / Hipermercado & Licores).
+// aplica a cualquier nicho (no solo Supermercado, Bodegones & Licores).
 function extraerCamposComercioExcel(row) {
   return {
     marca: row.MARCA || "",
@@ -2346,7 +2346,7 @@ export default function ComerciosProductosPage() {
                     <LayersIcon className="w-3.5 h-3.5" /> Datos específicos: {formData.nicho}
                   </h4>
 
-                  {formData.nicho === "Farmacia & Salud" && (
+                  {formData.nicho === "Farmacia, Salud & Cuidado Personal" && (
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -2398,7 +2398,7 @@ export default function ComerciosProductosPage() {
                     </div>
                   )}
 
-                  {formData.nicho === "Tecnología & Hogar" && (
+                  {formData.nicho === "Tecnología, Hogar & Ferretería" && (
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -2497,7 +2497,7 @@ export default function ComerciosProductosPage() {
                     </div>
                   )}
 
-                  {formData.nicho === "Supermercado / Hipermercado & Licores" && (
+                  {formData.nicho === "Supermercado, Bodegones & Licores" && (
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-[11px] font-bold text-slate-600 block mb-1">Presentación</label>

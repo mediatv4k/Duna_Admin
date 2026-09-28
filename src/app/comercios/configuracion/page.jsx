@@ -25,11 +25,11 @@ function claveConfigLocal(storeId) {
 // configurada con un rubro que no coincide con ninguna opción real del selector de productos.
 const NICHOS_COMERCIO = [
   "General",
-  "Farmacia & Salud",
-  "Tecnología & Hogar",
+  "Farmacia, Salud & Cuidado Personal",
+  "Tecnología, Hogar & Ferretería",
   "Gastronomía & Heladería",
   "Granel / Peso",
-  "Supermercado / Hipermercado & Licores",
+  "Supermercado, Bodegones & Licores",
   "Moda, Calzado & Perfumería",
 ];
 

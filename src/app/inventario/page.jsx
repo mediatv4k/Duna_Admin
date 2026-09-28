@@ -15,10 +15,12 @@ import { useAuth } from "@/context/AuthContext";
 
 const NICHOS = [
   "General",
-  "Farmacia & Salud",
-  "Tecnología & Hogar",
+  "Farmacia, Salud & Cuidado Personal",
+  "Tecnología, Hogar & Ferretería",
   "Gastronomía & Heladería",
   "Granel / Peso",
+  "Supermercado, Bodegones & Licores",
+  "Moda, Calzado & Perfumería",
 ];
 
 const IMAGEN_DEFECTO = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&q=80";
@@ -140,7 +142,7 @@ const FORM_INICIAL = {
   image: "",
   descripcion: "",
   nicho: "General",
-  // Farmacia & Salud
+  // Farmacia, Salud & Cuidado Personal
   principioActivo: "",
   concentracion: "",
   presentacion: "",
@@ -150,7 +152,7 @@ const FORM_INICIAL = {
   cadenaFrio: false,
   lote: "",
   fechaVencimiento: "",
-  // Tecnología & Hogar
+  // Tecnología, Hogar & Ferretería
   modelo: "",
   especificacionClave: "",
   voltaje: "110V",
@@ -1271,7 +1273,7 @@ export default function InventarioPage() {
                     <LayersIcon className="w-3.5 h-3.5" /> Datos específicos: {formData.nicho}
                   </h4>
 
-                  {formData.nicho === "Farmacia & Salud" && (
+                  {formData.nicho === "Farmacia, Salud & Cuidado Personal" && (
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -1323,7 +1325,7 @@ export default function InventarioPage() {
                     </div>
                   )}
 
-                  {formData.nicho === "Tecnología & Hogar" && (
+                  {formData.nicho === "Tecnología, Hogar & Ferretería" && (
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
