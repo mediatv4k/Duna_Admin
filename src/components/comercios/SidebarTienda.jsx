@@ -1,0 +1,83 @@
+"use client";
+import React from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { Settings, Boxes, ClipboardList, Megaphone, Clock, LogOut } from "lucide-react";
+import { cerrarSesionComercio } from "@/lib/commerceServices";
+
+// Sidebar interno de la gestión de una tienda específica del Portal de Aliados Comerciales (rediseño
+// premium). Componente nuevo y aislado: no altera ningún layout maestro ni sidebar del ERP interno — solo
+// lo usan las páginas de /comercios/* que explícitamente lo importan (por ahora: configuracion, productos).
+// "Pedidos", "Promociones" y "Horario" no tienen todavía ninguna vista real en este repositorio: se
+// muestran deshabilitados (sin href) en vez de enlazar a una ruta inexistente o fabricar el módulo aquí.
+const ITEMS = [
+  { id: "configuracion", href: "/comercios/configuracion", label: "Configuración", icono: Settings },
+  { id: "productos", href: "/comercios/productos", label: "Productos", icono: Boxes },
+  { id: "pedidos", href: null, label: "Pedidos", icono: ClipboardList },
+  { id: "promociones", href: null, label: "Promociones", icono: Megaphone },
+  { id: "horario", href: null, label: "Horario", icono: Clock },
+];
+
+export default function SidebarTienda({ nombreComercio, storeId, selectorTienda }) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const handleCerrarSesion = () => {
+    cerrarSesionComercio();
+    router.replace("/comercios/login");
+  };
+
+  return (
+    <aside className="w-60 shrink-0 h-screen sticky top-0 bg-white border-r border-slate-100 flex flex-col font-sans">
+      <div className="h-16 flex items-center gap-2 px-5 border-b border-slate-100 shrink-0">
+        <div className="w-8 h-8 rounded-xl bg-[#FE6712] text-white flex items-center justify-center font-black text-sm shrink-0">D&apos;</div>
+        <span className="text-sm font-black text-slate-900 truncate">Portal de Aliados</span>
+      </div>
+
+      {selectorTienda && <div className="px-4 pt-4 shrink-0">{selectorTienda}</div>}
+
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {ITEMS.map((it) => {
+          const Icono = it.icono;
+          if (!it.href) {
+            return (
+              <span
+                key={it.id}
+                title="Aún no implementado"
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-300 cursor-not-allowed"
+              >
+                <Icono className="w-4 h-4 shrink-0" /> {it.label}
+              </span>
+            );
+          }
+          const activo = pathname?.startsWith(it.href);
+          return (
+            <Link
+              key={it.id}
+              href={it.href}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold transition ${
+                activo ? "bg-[#FE6712] text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Icono className="w-4 h-4 shrink-0" /> {it.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="p-3 border-t border-slate-100 shrink-0">
+        <div className="px-3 py-2 mb-1">
+          <p className="text-[11px] font-bold text-slate-700 truncate">{nombreComercio || "Comercio"}</p>
+          <p className="text-[10px] text-slate-400">Tienda #{storeId ?? "—"}</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleCerrarSesion}
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition"
+        >
+          <LogOut className="w-4 h-4 shrink-0" /> Cerrar sesión
+        </button>
+      </div>
+    </aside>
+  );
+}

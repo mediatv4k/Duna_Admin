@@ -13,6 +13,7 @@ import { useCurrency } from "@/context/CurrencyContext";
 import { useBusinessProfile } from "@/context/BusinessProfileContext";
 import { obtenerTokenComercio, obtenerUsuarioComercio, cerrarSesionComercio, subirExcelBatchComercio, normalizarErroresBatch, esVendedorComercio } from "@/lib/commerceServices";
 import MenuComercio from "@/components/comercios/MenuComercio";
+import SidebarTienda from "@/components/comercios/SidebarTienda";
 
 const NICHOS = [
   "General",
@@ -1641,7 +1642,27 @@ export default function ComerciosProductosPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-slate-800 flex flex-col font-sans">
+    // Rediseño premium (sidebar interno de la tienda): se envuelve el contenido existente sin tocar nada
+    // de su interior (header, tabla, modales, handlers) — solo se agrega el sidebar como hermano a la
+    // izquierda y "flex-1" al contenedor de siempre. Alcance quirúrgico: cero líneas de lógica tocadas.
+    <div className="flex min-h-screen bg-white">
+      <SidebarTienda
+        nombreComercio={comercio?.name || comercio?.nombre}
+        storeId={storeId}
+        selectorTienda={
+          <SelectorTienda
+            tiendas={tiendas}
+            activaId={storeId}
+            nombreActivo={nombreActivo}
+            cargandoLista={cargandoTiendas}
+            errorLista={errorTiendas}
+            onReintentar={handleReintentarTiendas}
+            onSeleccionar={handleCambiarTienda}
+            deshabilitado={importando || guardando}
+          />
+        }
+      />
+    <div className="flex-1 min-h-screen bg-white text-slate-800 flex flex-col font-sans">
       {/* Móvil y tablet (< lg): el header crece en altura y sus controles se envuelven en filas; sin sticky para no
           ocupar media pantalla. Desde lg vuelve a ser una sola fila de 64 px pegada arriba. */}
       <header className="border-b border-slate-200 bg-white/95 backdrop-blur relative z-40 lg:sticky lg:top-0">
@@ -2449,6 +2470,7 @@ export default function ComerciosProductosPage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }
