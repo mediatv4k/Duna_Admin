@@ -1,31 +1,50 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings, Boxes, ClipboardList, Megaphone, Clock, LogOut } from "lucide-react";
-import { cerrarSesionComercio } from "@/lib/commerceServices";
+import { Settings, Boxes, ClipboardList, Megaphone, Clock, LogOut, MonitorPlay, BarChart3, Wallet } from "lucide-react";
+import { cerrarSesionComercio, obtenerUsuarioComercio, esVendedorComercio } from "@/lib/commerceServices";
 
 // Sidebar interno de la gestión de una tienda específica del Portal de Aliados Comerciales (rediseño
 // premium). Componente nuevo y aislado: no altera ningún layout maestro ni sidebar del ERP interno — solo
-// lo usan las páginas de /comercios/* que explícitamente lo importan (por ahora: configuracion, productos).
+// lo usan las páginas de /comercios/* que explícitamente lo importan.
 // "Pedidos", "Promociones" y "Horario" no tienen todavía ninguna vista real en este repositorio: se
 // muestran deshabilitados (sin href) en vez de enlazar a una ruta inexistente o fabricar el módulo aquí.
-const ITEMS = [
+
+const ITEMS_ADMIN = [
   { id: "configuracion", href: "/comercios/configuracion", label: "Configuración", icono: Settings },
-  { id: "productos", href: "/comercios/productos", label: "Productos", icono: Boxes },
+  { id: "kardex", href: "/comercios/productos", label: "Kardex", icono: Boxes },
+  { id: "mostrador", href: "/comercios/mostrador", label: "Mostrador", icono: MonitorPlay },
+  { id: "reportes", href: "/reportes", label: "Reportes", icono: BarChart3 },
   { id: "pedidos", href: null, label: "Pedidos", icono: ClipboardList },
+  { id: "cierreCaja", href: "/comercios/cierre-caja", label: "Cierre de Caja", icono: Wallet },
   { id: "promociones", href: null, label: "Promociones", icono: Megaphone },
   { id: "horario", href: null, label: "Horario", icono: Clock },
+];
+
+const ITEMS_VENDEDOR = [
+  { id: "mostrador", href: "/comercios/mostrador", label: "Control de Mostrador", icono: MonitorPlay },
+  { id: "pedidos", href: null, label: "Pedidos", icono: ClipboardList },
+  { id: "cierreCaja", href: "/comercios/cierre-caja", label: "Cierre de Caja", icono: Wallet },
 ];
 
 export default function SidebarTienda({ nombreComercio, storeId, selectorTienda }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [usuario, setUsuario] = useState(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage
+    setUsuario(obtenerUsuarioComercio());
+  }, []);
 
   const handleCerrarSesion = () => {
     cerrarSesionComercio();
     router.replace("/comercios/login");
   };
+
+  const vendedor = esVendedorComercio(usuario);
+  const items = vendedor ? ITEMS_VENDEDOR : ITEMS_ADMIN;
 
   return (
     <aside className="w-60 shrink-0 h-screen sticky top-0 bg-white border-r border-slate-100 flex flex-col font-sans">
@@ -37,7 +56,7 @@ export default function SidebarTienda({ nombreComercio, storeId, selectorTienda 
       {selectorTienda && <div className="px-4 pt-4 shrink-0">{selectorTienda}</div>}
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {ITEMS.map((it) => {
+        {items.map((it) => {
           const Icono = it.icono;
           if (!it.href) {
             return (
@@ -50,7 +69,7 @@ export default function SidebarTienda({ nombreComercio, storeId, selectorTienda 
               </span>
             );
           }
-          const activo = pathname?.startsWith(it.href);
+          const activo = pathname?.startsWith(it.href) || pathname === it.href;
           return (
             <Link
               key={it.id}
