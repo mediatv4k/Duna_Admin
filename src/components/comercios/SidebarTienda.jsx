@@ -2,14 +2,18 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings, Boxes, ClipboardList, Megaphone, Clock, LogOut, MonitorPlay, BarChart3, Wallet } from "lucide-react";
+import { Settings, Boxes, ClipboardList, Megaphone, Clock, LogOut, MonitorPlay, BarChart3, Wallet, CreditCard } from "lucide-react";
 import { cerrarSesionComercio, obtenerUsuarioComercio, esVendedorComercio } from "@/lib/commerceServices";
 
 // Sidebar interno de la gestión de una tienda específica del Portal de Aliados Comerciales (rediseño
 // premium). Componente nuevo y aislado: no altera ningún layout maestro ni sidebar del ERP interno — solo
-// lo usan las páginas de /comercios/* que explícitamente lo importan.
-// "Pedidos", "Promociones" y "Horario" no tienen todavía ninguna vista real en este repositorio: se
-// muestran deshabilitados (sin href) en vez de enlazar a una ruta inexistente o fabricar el módulo aquí.
+// lo usan las páginas de /comercios/* que explícitamente lo importan. Debe ser persistente en TODAS las
+// vistas del portal (cada página de /comercios/* lo importa y lo envuelve como hermano del contenido).
+// "Pedidos" y "Promociones" no tienen todavía ninguna vista real en este repositorio: se muestran
+// deshabilitados (sin href) en vez de enlazar a una ruta inexistente o fabricar el módulo aquí.
+// "Horario" (comercios/horario/page.jsx) y "Métodos de Pago" (comercios/metodos-pago/page.jsx) son vistas
+// independientes, no un solo módulo combinado — ambas comparten localStorage con Configuración, ver el
+// aviso en cualquiera de esos tres archivos.
 
 const ITEMS_ADMIN = [
   { id: "configuracion", href: "/comercios/configuracion", label: "Configuración", icono: Settings },
@@ -18,8 +22,9 @@ const ITEMS_ADMIN = [
   { id: "reportes", href: "/reportes", label: "Reportes", icono: BarChart3 },
   { id: "pedidos", href: null, label: "Pedidos", icono: ClipboardList },
   { id: "cierreCaja", href: "/comercios/cierre-caja", label: "Cierre de Caja", icono: Wallet },
+  { id: "metodosPago", href: "/comercios/metodos-pago", label: "Métodos de Pago", icono: CreditCard },
   { id: "promociones", href: null, label: "Promociones", icono: Megaphone },
-  { id: "horario", href: null, label: "Horario", icono: Clock },
+  { id: "horario", href: "/comercios/horario", label: "Horario", icono: Clock },
 ];
 
 const ITEMS_VENDEDOR = [

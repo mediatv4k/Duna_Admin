@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Check, X, ChevronDown, Search } from "lucide-react";
 import { obtenerTokenComercio, obtenerUsuarioComercio, cerrarSesionComercio } from "@/lib/commerceServices";
-import MenuComercio from "@/components/comercios/MenuComercio";
+import SidebarTienda from "@/components/comercios/SidebarTienda";
 
 // Vista aislada de este archivo (misma convención que el resto del portal: cada página trae su propia
 // capa mínima contra Adonis, sin compartir funciones internas de comercios/productos/page.jsx).
@@ -193,7 +193,10 @@ export default function MostradorComercioPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-slate-800 flex flex-col font-sans">
+    <div className="flex min-h-screen bg-white">
+      <SidebarTienda nombreComercio={comercio?.name || comercio?.nombre} storeId={storeId} />
+
+      <div className="flex-1 min-h-screen bg-white text-slate-800 flex flex-col font-sans">
       <header className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -207,8 +210,6 @@ export default function MostradorComercioPage() {
           </div>
         </div>
       </header>
-
-      <MenuComercio activo="mostrador" />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 flex-1 w-full space-y-4">
         <div className="relative w-full sm:w-80">
@@ -312,6 +313,7 @@ export default function MostradorComercioPage() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }

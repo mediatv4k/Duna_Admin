@@ -22,6 +22,7 @@ const NICHOS = [
   "Gastronomía & Heladería",
   "Granel / Peso",
   "Supermercado / Hipermercado & Licores",
+  "Moda, Calzado & Perfumería",
 ];
 
 const IMAGEN_DEFECTO = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&q=80";

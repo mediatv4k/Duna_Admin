@@ -1,9 +1,10 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Save, Check, Hash, Store, MapPin, User, Phone, Briefcase,
-  LocateFixed, ExternalLink, CreditCard, Clock, AlertTriangle,
+  LocateFixed, ExternalLink, AlertTriangle,
 } from "lucide-react";
 import { obtenerTokenComercio, obtenerUsuarioComercio, actualizarTiendaComercio } from "@/lib/commerceServices";
 import SidebarTienda from "@/components/comercios/SidebarTienda";
@@ -29,33 +30,8 @@ const NICHOS_COMERCIO = [
   "Gastronomía & Heladería",
   "Granel / Peso",
   "Supermercado / Hipermercado & Licores",
+  "Moda, Calzado & Perfumería",
 ];
-
-// Mismo vocabulario de métodos de pago que /pos (METODOS_PAGO), para no inventar una lista paralela.
-const METODOS_PAGO_DISPONIBLES = [
-  "Efectivo USD", "Efectivo Bs", "Pago Móvil", "Zelle",
-  "Transf. Mismo Banco", "Transf. Interbancaria", "Punto de Venta",
-];
-
-const DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
-
-function horarioInicial() {
-  return DIAS_SEMANA.reduce((acc, dia) => {
-    acc[dia] = { abierto: true, desde: "08:00", hasta: "18:00" };
-    return acc;
-  }, {});
-}
-
-// Estimación local (no viene del backend): compara la hora actual del navegador contra el horario
-// configurado para hoy. Solo informativa, se etiqueta como tal en la interfaz.
-function estaAbiertoAhora(horario) {
-  const ahora = new Date();
-  const diaHoy = DIAS_SEMANA[(ahora.getDay() + 6) % 7]; // getDay(): 0=Domingo -> reindexa a Lunes=0
-  const config = horario?.[diaHoy];
-  if (!config || !config.abierto) return false;
-  const horaActual = `${String(ahora.getHours()).padStart(2, "0")}:${String(ahora.getMinutes()).padStart(2, "0")}`;
-  return horaActual >= config.desde && horaActual <= config.hasta;
-}
 
 function Campo({ etiqueta, icono: Icono, children }) {
   return (
@@ -94,8 +70,6 @@ export default function ConfiguracionComercioPage() {
   const [datosLocales, setDatosLocales] = useState({
     direccion: "", responsable: "", telefono: "",
     lat: "", lng: "",
-    metodosPago: [],
-    horario: horarioInicial(),
   });
   const [nicho, setNicho] = useState("General");
   const [guardado, setGuardado] = useState(false);
@@ -109,8 +83,18 @@ export default function ConfiguracionComercioPage() {
     try {
       const guardadoPrevio = JSON.parse(localStorage.getItem(claveConfigLocal(storeId)) || "null");
       if (guardadoPrevio) {
+        // Solo los campos que esta página posee: metodosPago/horario son de comercios/horario/page.jsx y
+        // no se cargan aquí, para no reescribirlos luego con un valor obsoleto al guardar (ver handleGuardar).
+        const { direccion, responsable, telefono, lat, lng } = guardadoPrevio;
         // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente y una vez se conoce storeId
-        setDatosLocales((prev) => ({ ...prev, ...guardadoPrevio }));
+        setDatosLocales((prev) => ({
+          ...prev,
+          ...(direccion !== undefined && { direccion }),
+          ...(responsable !== undefined && { responsable }),
+          ...(telefono !== undefined && { telefono }),
+          ...(lat !== undefined && { lat }),
+          ...(lng !== undefined && { lng }),
+        }));
       }
       
       const nichoPrevio = localStorage.getItem(`store_nicho_${storeId}`);
@@ -121,22 +105,6 @@ export default function ConfiguracionComercioPage() {
       // localStorage corrupto o inaccesible: se ignora y queda el formulario en blanco
     }
   }, [storeId]);
-
-  const handleToggleMetodoPago = (metodo) => {
-    setDatosLocales((prev) => ({
-      ...prev,
-      metodosPago: prev.metodosPago.includes(metodo)
-        ? prev.metodosPago.filter((m) => m !== metodo)
-        : [...prev.metodosPago, metodo],
-    }));
-  };
-
-  const handleCambiarHorarioDia = (dia, campo, valor) => {
-    setDatosLocales((prev) => ({
-      ...prev,
-      horario: { ...prev.horario, [dia]: { ...prev.horario[dia], [campo]: valor } },
-    }));
-  };
 
   // Geolocalización real vía API nativa del navegador (sin dependencias ni API key): no hay ningún SDK
   // de mapas instalado en el proyecto (ver package.json), así que en vez de fabricar un mapa embebido
@@ -171,15 +139,22 @@ export default function ConfiguracionComercioPage() {
   const urlGoogleMaps = tieneCoordenadas
     ? `https://www.google.com/maps?q=${encodeURIComponent(datosLocales.lat)},${encodeURIComponent(datosLocales.lng)}`
     : null;
-  const abiertoAhora = estaAbiertoAhora(datosLocales.horario);
 
   const handleGuardar = async (e) => {
     e.preventDefault();
     setGuardando(true);
     setErrorBackend("");
 
-    // Guardar en localStorage: única persistencia confirmada para estos campos (ver aviso en pantalla)
-    localStorage.setItem(claveConfigLocal(storeId), JSON.stringify(datosLocales));
+    // Fusiona sobre lo que ya hubiera en localStorage (metodosPago/horario, propiedad de
+    // comercios/horario/page.jsx): nunca se sobreescribe el objeto completo desde esta página, o se
+    // perdería lo que esa otra pantalla ya guardó.
+    let previo = {};
+    try {
+      previo = JSON.parse(localStorage.getItem(claveConfigLocal(storeId)) || "{}") || {};
+    } catch (e) {
+      previo = {};
+    }
+    localStorage.setItem(claveConfigLocal(storeId), JSON.stringify({ ...previo, ...datosLocales }));
     localStorage.setItem(`store_nicho_${storeId}`, nicho);
 
     // Intento optimista contra Adonis (PUT /store/:storeId): ningún campo de esta sección tiene un
@@ -193,8 +168,6 @@ export default function ConfiguracionComercioPage() {
         phone: datosLocales.telefono,
         lat: datosLocales.lat ? Number(datosLocales.lat) : null,
         lng: datosLocales.lng ? Number(datosLocales.lng) : null,
-        metodosPago: datosLocales.metodosPago,
-        horario: datosLocales.horario,
       }, token);
     } catch (err) {
       // No es un fallo silencioso: se guardó localmente (fuente de verdad), pero se avisa que el
@@ -355,93 +328,18 @@ export default function ConfiguracionComercioPage() {
               {errorUbicacion && <p className="text-[11px] font-bold text-rose-600">{errorUbicacion}</p>}
             </div>
 
-            {/* Métodos de pago: mismo vocabulario que /pos, para que lo configurado aquí describa
-                exactamente lo que el cajero puede cobrar. */}
-            <div className="w-full text-left pt-2 border-t border-dashed border-slate-200 space-y-3">
-              <h2 className="text-xs font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                <CreditCard className="w-3.5 h-3.5 text-[#FE6712]" /> Métodos de Pago Aceptados
-              </h2>
-              <div className="flex flex-wrap justify-start gap-2 text-left">
-                {METODOS_PAGO_DISPONIBLES.map((metodo) => {
-                  const activo = datosLocales.metodosPago.includes(metodo);
-                  return (
-                    <button
-                      key={metodo}
-                      type="button"
-                      onClick={() => handleToggleMetodoPago(metodo)}
-                      aria-pressed={activo}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition ${
-                        activo
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-white text-slate-500 border-slate-200 hover:border-[#FE6712] hover:text-[#FE6712]"
-                      }`}
-                    >
-                      {activo && <Check className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />}
-                      {metodo}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Horario de atención: isOpen no viene del backend, se estima localmente comparando la
-                hora del navegador contra este horario — se etiqueta como estimación, no como dato oficial. */}
-            <div className="w-full text-left pt-2 border-t border-dashed border-slate-200 space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <h2 className="text-xs font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-[#FE6712]" /> Horario de Atención
-                </h2>
-                <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${
-                  abiertoAhora ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"
-                }`}>
-                  {abiertoAhora ? "Abierto ahora (estimado)" : "Cerrado ahora (estimado)"}
-                </span>
-              </div>
-              <div className="w-full space-y-1.5">
-                {DIAS_SEMANA.map((dia) => {
-                  const config = datosLocales.horario[dia];
-                  return (
-                    <div key={dia} className="w-full flex items-center gap-3 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={config.abierto}
-                        aria-label={`${config.abierto ? "Cerrar" : "Abrir"} ${dia}`}
-                        onClick={() => handleCambiarHorarioDia(dia, "abierto", !config.abierto)}
-                        className={`w-8 h-5 shrink-0 rounded-full relative transition-colors ${config.abierto ? "bg-[#FE6712]" : "bg-slate-200"}`}
-                      >
-                        <span className={`w-4 h-4 bg-white rounded-full shadow-sm absolute top-[2px] transition-all ${config.abierto ? "left-[14px]" : "left-[2px]"}`} />
-                      </button>
-                      <span className="text-xs font-bold text-slate-700 w-20 shrink-0">{dia}</span>
-                      {config.abierto ? (
-                        <div className="flex items-center gap-2 flex-1">
-                          <input
-                            type="time"
-                            value={config.desde}
-                            onChange={(e) => handleCambiarHorarioDia(dia, "desde", e.target.value)}
-                            className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:border-[#FE6712]"
-                          />
-                          <span className="text-slate-400 text-xs">—</span>
-                          <input
-                            type="time"
-                            value={config.hasta}
-                            onChange={(e) => handleCambiarHorarioDia(dia, "hasta", e.target.value)}
-                            className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:border-[#FE6712]"
-                          />
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-slate-400 italic flex-1">Cerrado</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+            {/* Métodos de Pago y Horario de Atención se independizaron a su propia página, ver
+                comercios/horario/page.jsx y comercios/metodos-pago/page.jsx (enlaces propios en el sidebar). */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-bold text-slate-500">
+              Los métodos de pago aceptados ahora se configuran en{" "}
+              <Link href="/comercios/metodos-pago" className="text-[#FE6712] hover:underline">Métodos de Pago</Link>, y el
+              horario de atención en <Link href="/comercios/horario" className="text-[#FE6712] hover:underline">Horario</Link>, en el menú lateral.
             </div>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-bold text-amber-800">
-              Dirección, Responsable, Teléfono, Ubicación, Métodos de Pago y Horario se guardan de forma
-              confiable solo en este navegador — no hay hoy un endpoint de Adonis confirmado para
-              persistir estos datos en el servidor (se intenta igual, de forma optimista, al guardar).
+              Dirección, Responsable, Teléfono y Ubicación se guardan de forma confiable solo en este
+              navegador — no hay hoy un endpoint de Adonis confirmado para persistir estos datos en el
+              servidor (se intenta igual, de forma optimista, al guardar).
             </div>
 
             {errorBackend && (
