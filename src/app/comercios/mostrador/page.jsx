@@ -48,7 +48,7 @@ function mapearProductoMostrador(item) {
     id: item.id,
     code: String(item.code || item.sku || item.id || ""),
     name: item.name || "Sin Nombre",
-    price: Number(meta.price?.basePrice ?? meta.price?.promoPrice ?? item.price) || 0,
+    price: Number(item.metadata?.price?.basePrice || item.metadata?.price?.promoPrice || item.price || 0),
     status: item.status || "ACTIVE",
     metadataCompleta: meta,
   };
@@ -273,19 +273,8 @@ export default function MostradorComercioPage() {
                             <p className="text-[11px] font-bold text-slate-700">{grupo.name || grupo.title || `Grupo ${gi + 1}`}</p>
                             {(grupo.items || []).map((item, ii) => {
                               const activo = item.status !== "INACTIVE";
-                              const nombreReal = item.name || item.title || item.label || "";
-                              const codigoReal = item.code || item.sku || "";
-                              
-                              let nombreItem = "";
-                              if (nombreReal && codigoReal && !nombreReal.includes(codigoReal)) {
-                                nombreItem = `${nombreReal} (${codigoReal})`;
-                              } else if (nombreReal) {
-                                nombreItem = nombreReal;
-                              } else if (codigoReal) {
-                                nombreItem = codigoReal;
-                              } else {
-                                nombreItem = `Opción ${ii + 1}`;
-                              }
+                              const baseName = item.name || item.title || item.label;
+                              const nombreItem = baseName && item.code ? `${baseName} (${item.code})` : (baseName || item.code);
 
                               return (
                                 <div key={ii} className="flex items-center justify-between gap-2 pl-1">
