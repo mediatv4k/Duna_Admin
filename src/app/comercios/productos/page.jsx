@@ -21,6 +21,7 @@ const NICHOS = [
   "Tecnología & Hogar",
   "Gastronomía & Heladería",
   "Granel / Peso",
+  "Supermercado / Hipermercado & Licores",
 ];
 
 const IMAGEN_DEFECTO = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&q=80";
@@ -296,6 +297,42 @@ function guardarFichasFarmaciaLocalMasivo(storeId, entradas) {
   localStorage.setItem(claveFarmaciaLocal(storeId), JSON.stringify(dict));
 }
 
+// Mismo mecanismo y mismo motivo que la ficha de farmacia (arriba), generalizado a los atributos
+// universales de consumo masivo (Marca, Presentación, Volumen, Código de Barras): verificado contra
+// el backend real (producto FD001-001, tienda 47, 2026-09-28) que ninguno de estos viaja hoy como clave
+// suelta de metadata (metadata.marca no existe en el producto real, pese a que el formulario ya lo
+// envía así) — mismo síntoma que ya obligó a mover la ficha de farmacia a un namespace anidado. Como
+// "supermercado" no es un namespace confirmado contra Adonis, se aplica el mismo respaldo de solo-navegador
+// en vez de inventar un contrato nuevo (ver NAMESPACES_POR_NICHO más abajo).
+function claveExtendidaLocal(storeId) {
+  return `comercio_extendido_${storeId}`;
+}
+
+function leerFichasExtendidasLocal(storeId) {
+  if (typeof window === "undefined" || !storeId) return {};
+  try {
+    return JSON.parse(localStorage.getItem(claveExtendidaLocal(storeId)) || "{}");
+  } catch (e) {
+    return {};
+  }
+}
+
+function guardarFichaExtendidaLocal(storeId, sku, camposExtendidos) {
+  if (typeof window === "undefined" || !storeId || !sku) return;
+  const dict = leerFichasExtendidasLocal(storeId);
+  dict[String(sku).trim().toUpperCase()] = camposExtendidos;
+  localStorage.setItem(claveExtendidaLocal(storeId), JSON.stringify(dict));
+}
+
+function guardarFichasExtendidasLocalMasivo(storeId, entradas) {
+  if (typeof window === "undefined" || !storeId) return;
+  const dict = leerFichasExtendidasLocal(storeId);
+  entradas.forEach(([sku, campos]) => {
+    dict[String(sku).trim().toUpperCase()] = campos;
+  });
+  localStorage.setItem(claveExtendidaLocal(storeId), JSON.stringify(dict));
+}
+
 // Esquema plano que consume la tabla y el formulario; reconstruye los campos extendidos desde metadata (lectura)
 function mapearProductoComercio(item, idx, storeId) {
   const meta = item.metadata || {};
@@ -308,6 +345,7 @@ function mapearProductoComercio(item, idx, storeId) {
   const namespaceFarmacia = obtenerNamespacePorNicho(meta.nicho || "General");
   const fichaAdonis = (namespaceFarmacia && meta[namespaceFarmacia]) || null;
   const fichaFarmacia = leerFichasFarmaciaLocal(storeId)[codigoProducto] || null;
+  const fichaExtendida = leerFichasExtendidasLocal(storeId)[codigoProducto] || null;
   if (idx === 0) {
     console.log("--> ITEM CRUDO DESDE ADONIS:", item.codigo, item.metadata || item.meta || item);
     console.log("--> CLAVES EN RAÍZ DE ADONIS:", Object.keys(item));
@@ -316,11 +354,12 @@ function mapearProductoComercio(item, idx, storeId) {
     id: item.id != null ? String(item.id) : String(item.code || item.sku || `tmp_${Date.now()}`),
     adonisId: item.id,
     code: String(item.code || item.codigo || item.sku || item.id || ""),
-    barcode: meta.barcode || item.barcode || "",
+    barcode: meta.barcode || item.barcode || fichaExtendida?.barcode || "",
     name: item.name || "Sin Nombre",
     categoria: nombreCategoriaComercio(item) || "General",
     subcategoria: meta.subcategoria || item.internal_category || item.internalCategory || "",
-    marca: meta.marca || "",
+    marca: meta.marca || fichaExtendida?.marca || "",
+    volumen: meta.volumen || fichaExtendida?.volumen || leerCampoFlexible(item, meta, ["volumen", "VOLUMEN"]) || "",
     costo: Number(meta.costo) || 0,
     price: Number(meta.price?.basePrice ?? item.price) || 0,
     stock: Number(item.stock ?? 0),
@@ -331,7 +370,7 @@ function mapearProductoComercio(item, idx, storeId) {
     nicho: meta.nicho || "General",
     principioActivo: fichaAdonis?.principioActivo ?? fichaFarmacia?.principioActivo ?? leerCampoFlexible(item, meta, ["principio_activo", "PRINCIPIO_ACTIVO", "principioActivo"]) ?? "",
     concentracion: fichaAdonis?.concentracion ?? fichaFarmacia?.concentracion ?? leerCampoFlexible(item, meta, ["concentracion", "CONCENTRACION", "concentracionDosis"]) ?? "",
-    presentacion: fichaAdonis?.presentacion ?? fichaFarmacia?.presentacion ?? leerCampoFlexible(item, meta, ["presentacion", "PRESENTACION"]) ?? "",
+    presentacion: fichaAdonis?.presentacion ?? fichaFarmacia?.presentacion ?? fichaExtendida?.presentacion ?? leerCampoFlexible(item, meta, ["presentacion", "PRESENTACION"]) ?? "",
     laboratorio: fichaAdonis?.laboratorio ?? fichaFarmacia?.laboratorio ?? leerCampoFlexible(item, meta, ["laboratorio", "LABORATORIO"]) ?? "",
     registroSanitario: fichaAdonis?.registroSanitario ?? fichaFarmacia?.registroSanitario ?? leerCampoFlexible(item, meta, ["registro_sanitario", "REGISTRO_SANITARIO", "registroSanitario"]) ?? "",
     condicionVenta: fichaAdonis?.condicionVenta ?? fichaFarmacia?.condicionVenta ?? leerCampoFlexible(item, meta, ["condicion_venta", "CONDICION_VENTA", "condicionVenta"]) ?? "Venta Libre",
@@ -398,6 +437,8 @@ const FORM_INICIAL = {
   metadataVariants: [],
   // Granel / Peso
   unidadMedida: "kg",
+  // Supermercado / Hipermercado & Licores (reutiliza "presentacion" y el campo universal "marca")
+  volumen: "",
 };
 
 // Copia profunda defensiva de metadata.variants (llega de una respuesta JSON de Adonis, sin funciones/fechas/
@@ -511,6 +552,22 @@ function tieneAlgunCampoFarmacia(campos) {
   );
 }
 
+// Mismo motivo que extraerCamposFarmaciaExcel: el batch de Adonis tampoco persiste de forma confiable
+// estas columnas universales de consumo masivo (Marca, Presentación, Volumen, Código de Barras),
+// aplica a cualquier nicho (no solo Supermercado / Hipermercado & Licores).
+function extraerCamposComercioExcel(row) {
+  return {
+    marca: row.MARCA || "",
+    presentacion: row.PRESENTACION || "",
+    volumen: row.VOLUMEN || "",
+    barcode: row.BARCODE || row.CODIGO_BARRAS || "",
+  };
+}
+
+function tieneAlgunCampoComercio(campos) {
+  return Boolean(campos.marca || campos.presentacion || campos.volumen || campos.barcode);
+}
+
 // Vuelve a sincronizar los campos estándar de un producto ya existente en Adonis (PUT /product/:id).
 // La ficha técnica de farmacia (camposFarmacia) ya NO viaja en este payload: Adonis no la persiste de
 // forma confiable en ningún campo (ni metadata suelta, ni metadata.variants, ni description con tag:
@@ -538,6 +595,8 @@ async function sincronizarMetadataFarmacia(producto, camposFarmacia, token, esPr
       barcode: producto.barcode || "",
       subcategoria: producto.subcategoria || "",
       marca: producto.marca || "",
+      presentacion: producto.presentacion || "",
+      volumen: producto.volumen || "",
       costo: Number(producto.costo) || 0,
       descripcion: producto.descripcion || "",
       nicho: producto.nicho || "General",
@@ -626,6 +685,10 @@ function buildMarketplaceProductPayload(producto) {
         infoPrice: Number(producto.price) || 0,
       },
       variants: metadataVariants,
+      // Atributos universales de consumo masivo: mismo origen y mismo aviso que "farmacia" abajo.
+      barcode: producto.barcode || "",
+      marca: producto.marca || "",
+      volumen: producto.volumen || "",
       // Ficha técnica de farmacia: ya viene poblada en "producto" desde mapearProductoComercio
       // (localStorage por SKU); se exporta aquí solo como referencia, no se envía a Adonis.
       farmacia: {
@@ -1121,8 +1184,9 @@ export default function ComerciosProductosPage() {
 
       const stats = respuesta?.data || {};
 
-      // El batch descarta las columnas de farmacia y Adonis no las persiste de forma confiable en
-      // ningún campo del producto: la ficha técnica se guarda solo en este navegador, por SKU.
+      // El batch descarta las columnas de farmacia y las de marca/presentación/volumen: Adonis no las
+      // persiste de forma confiable en ningún campo del producto. Ambas fichas se guardan solo en este
+      // navegador, por SKU.
       const catalogoActualizado = (await cargarCatalogoComercio(storeId, token)).map((item, idx) => mapearProductoComercio(item, idx, storeId));
       setProductos(catalogoActualizado);
 
@@ -1130,29 +1194,43 @@ export default function ComerciosProductosPage() {
       const porCodigo = new Map(catalogoActualizado.map((p) => [String(p.code || "").trim().toUpperCase(), p]));
 
       const entradasFarmacia = [];
+      const entradasComercio = [];
       for (const row of filasExcel) {
         const codigo = String(row.CODIGO || "").trim().toUpperCase();
         if (!codigo) continue;
         const camposFarmacia = extraerCamposFarmaciaExcel(row);
         if (tieneAlgunCampoFarmacia(camposFarmacia)) entradasFarmacia.push([codigo, camposFarmacia]);
+        const camposComercio = extraerCamposComercioExcel(row);
+        if (tieneAlgunCampoComercio(camposComercio)) entradasComercio.push([codigo, camposComercio]);
       }
       guardarFichasFarmaciaLocalMasivo(storeId, entradasFarmacia);
+      guardarFichasExtendidasLocalMasivo(storeId, entradasComercio);
+
+      // Une ambos conjuntos de códigos: un producto puede traer solo ficha de farmacia, solo datos
+      // de marca/presentación/volumen, o ambos (ej. un multivitamínico con marca comercial propia).
+      const camposComercioPorCodigo = new Map(entradasComercio);
+      const codigosASincronizar = new Set([...entradasFarmacia.map(([c]) => c), ...entradasComercio.map(([c]) => c)]);
 
       let sincronizados = 0;
-      for (const [codigo, camposFarmacia] of entradasFarmacia) {
-        const producto = porCodigo.get(codigo);
-        if (!producto || !producto.adonisId) continue;
-        const ok = await sincronizarMetadataFarmacia(producto, camposFarmacia, token, sincronizados === 0, payloadTienda);
+      for (const codigo of codigosASincronizar) {
+        const productoBase = porCodigo.get(codigo);
+        if (!productoBase || !productoBase.adonisId) continue;
+        const camposComercio = camposComercioPorCodigo.get(codigo);
+        const producto = camposComercio ? { ...productoBase, ...camposComercio } : productoBase;
+        const ok = await sincronizarMetadataFarmacia(producto, null, token, sincronizados === 0, payloadTienda);
         if (ok) sincronizados++;
       }
 
       // Refleja de inmediato en la tabla las fichas técnicas recién guardadas en localStorage,
       // sin pedir la red de nuevo ni tocar el resto de los campos ya cargados del producto.
-      if (entradasFarmacia.length > 0) {
+      if (entradasFarmacia.length > 0 || entradasComercio.length > 0) {
         const dictLocal = leerFichasFarmaciaLocal(storeId);
+        const dictExtendido = leerFichasExtendidasLocal(storeId);
         setProductos((prev) => prev.map((p) => {
-          const ficha = dictLocal[String(p.code || "").trim().toUpperCase()];
-          return ficha ? { ...p, ...ficha } : p;
+          const clave = String(p.code || "").trim().toUpperCase();
+          const ficha = dictLocal[clave];
+          const extendido = dictExtendido[clave];
+          return (ficha || extendido) ? { ...p, ...ficha, ...extendido } : p;
         }));
       }
 
@@ -1168,6 +1246,7 @@ export default function ComerciosProductosPage() {
           { etiqueta: "Eliminados", valor: Number(stats.deleted) || 0 },
           { etiqueta: "Con error", valor: errores.length },
           { etiqueta: "Fichas de farmacia (local)", valor: entradasFarmacia.length },
+          { etiqueta: "Marca/Presentación/Volumen (local)", valor: entradasComercio.length },
         ],
         errores,
       });
@@ -1410,6 +1489,15 @@ export default function ComerciosProductosPage() {
     };
     guardarFichaFarmaciaLocal(storeId, formData.code, camposFarmaciaForm);
 
+    // Mismo respaldo, generalizado a los atributos universales de consumo masivo: verificado contra el
+    // backend real que "marca" tampoco sobrevive como clave suelta de metadata (ver claveExtendidaLocal).
+    guardarFichaExtendidaLocal(storeId, formData.code, {
+      marca: formData.marca,
+      presentacion: formData.presentacion,
+      volumen: formData.volumen,
+      barcode: formData.barcode,
+    });
+
     // Campos básicos que AdonisJS espera en la raíz del producto
     const raiz = {
       name: formData.name,
@@ -1431,6 +1519,8 @@ export default function ComerciosProductosPage() {
       barcode: formData.barcode,
       subcategoria: formData.subcategoria,
       marca: formData.marca,
+      presentacion: formData.presentacion,
+      volumen: formData.volumen,
       costo: Number(formData.costo) || 0,
       descripcion: formData.descripcion,
       nicho: formData.nicho,
@@ -1979,7 +2069,14 @@ export default function ComerciosProductosPage() {
                               onError={(e) => { e.target.src = IMAGEN_DEFECTO; }}
                             />
                           </td>
-                          <td className="p-4 font-bold text-slate-800 max-w-xs">{item.name}</td>
+                          <td className="p-4 font-bold text-slate-800 max-w-xs">
+                            {item.name}
+                            {(item.marca || item.presentacion || item.volumen) && (
+                              <span className="block mt-0.5 text-[10px] font-semibold text-slate-400 truncate">
+                                {[item.marca, [item.presentacion, item.volumen].filter(Boolean).join(" · ")].filter(Boolean).join(" — ")}
+                              </span>
+                            )}
+                          </td>
                           <td className="p-4 text-slate-500 font-medium">{item.code}</td>
                           <td className="p-4 text-slate-600">{item.categoria || "—"}</td>
                           <td className="p-4">
@@ -2394,6 +2491,19 @@ export default function ComerciosProductosPage() {
                         <option value="lt">Litro (lt)</option>
                         <option value="un">Unidad (un)</option>
                       </select>
+                    </div>
+                  )}
+
+                  {formData.nicho === "Supermercado / Hipermercado & Licores" && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Presentación</label>
+                        <input type="text" value={formData.presentacion} onChange={(e) => setFormData({ ...formData, presentacion: e.target.value })} placeholder="Ej: Botella, Lata, Caja x 6" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Volumen / Contenido</label>
+                        <input type="text" value={formData.volumen} onChange={(e) => setFormData({ ...formData, volumen: e.target.value })} placeholder="Ej: 750ml, 1L, 6x355ml" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+                      </div>
                     </div>
                   )}
                 </div>
