@@ -15,6 +15,7 @@ import { useCurrency } from "@/context/CurrencyContext";
 import { useUser } from "@/context/UserContext";
 import bancosVenezuela from "@/data/bancosVenezuela";
 import { escucharColeccion, escucharDocumento, guardarDocumento, actualizarDocumento, eliminarDocumento } from "@/lib/firebase";
+import SelectorFichaMaestra from "@/components/comercios/SelectorFichaMaestra";
 
 const METODOS_PAGO = [
   "Efectivo USD",
@@ -75,6 +76,21 @@ async function cargarCatalogoAdonisPos(signal) {
     categoria: item.category?.name || (typeof item.category === "string" ? item.category : "") || item.internalCategory || "",
     outOfStock: Boolean(item.outOfStock),
   }));
+}
+
+// Ficha Maestra (presentaciones + pool de sabores compartido): mismo contrato de metadata construido y
+// verificado en /comercios/ficha-maestra (SelectorFichaMaestra.jsx). Aislado del flujo de variantes de
+// "Gastronomía & Heladería" (nicho/variantes) que ya existía en este archivo — no se toca esa rama.
+function parsearMetadataProductoPos(item) {
+  try {
+    return typeof item?.metadata === "string" ? JSON.parse(item.metadata) : (item?.metadata || {});
+  } catch (e) {
+    return {};
+  }
+}
+
+function esFichaMaestraProducto(item) {
+  return parsearMetadataProductoPos(item)?.esFichaMaestra === true;
 }
 
 const TIPOS_DOCUMENTO_VENTA = [
@@ -300,6 +316,7 @@ export default function POSPage() {
 
   const [cuentas, setCuentas] = useState([]);
   const [productosInventario, setProductosInventario] = useState([]);
+  const [productoFichaMaestraActivo, setProductoFichaMaestraActivo] = useState(null);
   const [tipoDocumentoVenta, setTipoDocumentoVenta] = useState("FACTURA");
   const [fiscalMovilAbierto, setFiscalMovilAbierto] = useState(false);
   const [ticketMovilAbierto, setTicketMovilAbierto] = useState(false);
@@ -665,6 +682,22 @@ export default function POSPage() {
     });
   };
 
+  const metaFichaMaestraActiva = useMemo(
+    () => parsearMetadataProductoPos(productoFichaMaestraActivo),
+    [productoFichaMaestraActivo]
+  );
+
+  // Confirmación del selector de Ficha Maestra: agrega 1 unidad de la presentación con sus sabores
+  // elegidos como un renglón normal del ticket (mismo camino que cualquier otra venta), sin llamada de red.
+  const handleConfirmarFichaMaestra = ({ presentacionId, saboresElegidos }) => {
+    const presentacion = (metaFichaMaestraActiva.presentaciones || []).find((p) => p.id === presentacionId);
+    if (!presentacion || !productoFichaMaestraActivo) return;
+    const nombresSabores = saboresElegidos.map((clave) => metaFichaMaestraActiva.sabores?.[clave]?.nombre || clave);
+    const varianteTexto = `${presentacion.nombre}: ${nombresSabores.join(", ")}`;
+    agregarProductoAlTicket({ ...productoFichaMaestraActivo, price: Number(presentacion.price) || 0 }, varianteTexto, [], 1);
+    setProductoFichaMaestraActivo(null);
+  };
+
   const handleAgregarAlTicket = () => {
     if (!itemActual.productoId || !productoSeleccionado) {
       alert("Selecciona un producto del catálogo.");
@@ -693,6 +726,12 @@ export default function POSPage() {
 
   // Agrega un producto directamente desde la lista predictiva con 1 unidad
   const handleAgregarProductoDirecto = (prod) => {
+    if (esFichaMaestraProducto(prod)) {
+      setProductoFichaMaestraActivo(prod);
+      setBusquedaProducto("");
+      setMostrarSugerenciasProducto(false);
+      return;
+    }
     const requiereVariante = prod.nicho === "Gastronomía & Heladería" && (prod.variantes || []).length > 0;
     if (requiereVariante) {
       handleSeleccionarProducto(prod);
@@ -1842,6 +1881,30 @@ export default function POSPage() {
           </div>
 
           </div>
+
+          {/* Panel inline de Ficha Maestra (presentaciones + sabores) — nunca modal, vive en el Workspace */}
+          {productoFichaMaestraActivo && (
+            <div className="shrink-0 bg-white border border-[#FE6712]/30 rounded-2xl p-4 mb-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-[#FE6712]">Ficha Maestra</p>
+                  <p className="text-sm font-black text-slate-900 truncate">{productoFichaMaestraActivo.name}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProductoFichaMaestraActivo(null)}
+                  aria-label="Cancelar selección de ficha maestra"
+                  className="shrink-0 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <SelectorFichaMaestra
+                producto={{ metadata: metaFichaMaestraActiva }}
+                onConfirmar={handleConfirmarFichaMaestra}
+              />
+            </div>
+          )}
 
           {/* C) Grilla de productos: única zona con scroll vertical */}
           <div className="flex-1 overflow-y-auto pr-1 pb-4 min-h-0 [scrollbar-width:thin] [scrollbar-color:#cbd5e1_transparent]">
