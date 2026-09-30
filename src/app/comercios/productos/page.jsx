@@ -2084,7 +2084,21 @@ export default function ComerciosProductosPage() {
                                 {[item.laboratorio, item.principioActivo].filter(Boolean).join(" — ")}
                               </span>
                             )}
-                            {(item.fechaVencimiento || item.cadenaFrio) && (
+                            {item.modelo && (
+                              <span className="block mt-0.5 text-[10px] font-semibold text-slate-400 truncate">
+                                {[item.modelo, item.voltaje, item.condicion].filter(Boolean).join(" — ")}
+                              </span>
+                            )}
+                            {((item.variantes?.length > 0) || (item.toppings?.length > 0)) && (
+                              <span className="block mt-0.5 text-[10px] font-semibold text-slate-400 truncate">
+                                {[
+                                  item.variantes?.length > 0 ? `${item.variantes.length} sabor${item.variantes.length === 1 ? "" : "es"}` : "",
+                                  item.toppings?.length > 0 ? `${item.toppings.length} topping${item.toppings.length === 1 ? "" : "s"}` : "",
+                                  item.areaDespacho,
+                                ].filter(Boolean).join(" — ")}
+                              </span>
+                            )}
+                            {(item.fechaVencimiento || item.cadenaFrio || item.mesesGarantia > 0 || item.costo > 0) && (
                               <span className="flex items-center gap-1.5 mt-1 flex-wrap">
                                 {item.fechaVencimiento && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-500">
@@ -2094,6 +2108,16 @@ export default function ComerciosProductosPage() {
                                 {item.cadenaFrio && (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-50 border border-cyan-200 text-[9px] font-bold text-cyan-700">
                                     <Snowflake className="w-2.5 h-2.5" /> Cadena de Frío
+                                  </span>
+                                )}
+                                {item.mesesGarantia > 0 && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-500">
+                                    Garantía: {item.mesesGarantia} meses
+                                  </span>
+                                )}
+                                {item.costo > 0 && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-500">
+                                    Costo: ${item.costo.toFixed(2)}
                                   </span>
                                 )}
                               </span>

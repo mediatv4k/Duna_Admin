@@ -114,9 +114,12 @@ function nombreCategoriaAdonis(item) {
 
 // Esquema plano que consumen la tabla, la edición y las exportaciones
 function mapearProductoAdonis(item) {
-  // Ficha técnica de farmacia: mismo namespace verificado en ARQUITECTURA.md (metadata.farmacia), leída
-  // con optional chaining porque la mayoría de los productos (fuera de ese nicho) no la traen.
-  const farmacia = item.metadata?.farmacia;
+  // Ficha técnica de farmacia: único namespace anidado verificado contra el backend real (ver
+  // ARQUITECTURA.md). Tecnología, Gastronomía y Marca/Costo NO tienen un namespace confirmado
+  // análogo (metadata.tecnologia/gastronomia/general no existen) — Adonis los guarda como claves
+  // sueltas directo en la raíz de metadata (mismo esquema que src/app/comercios/productos/page.jsx).
+  const meta = item.metadata || {};
+  const farmacia = meta.farmacia;
   return {
     id: String(item.code || item.sku || item.id).replaceAll("/", "-"),
     adonisId: item.id,
@@ -134,6 +137,15 @@ function mapearProductoAdonis(item) {
     presentacion: farmacia?.presentacion || "",
     fechaVencimiento: farmacia?.fechaVencimiento || "",
     cadenaFrio: Boolean(farmacia?.requiereFrio),
+    marca: meta.marca || "",
+    costo: Number(meta.costo) || 0,
+    modelo: meta.modelo || "",
+    voltaje: meta.voltaje || "110V",
+    condicion: meta.condicion || "Nuevo",
+    mesesGarantia: Number(meta.mesesGarantia) || 0,
+    variantes: meta.variantes || [],
+    toppings: meta.toppings || [],
+    areaDespacho: meta.areaDespacho || "Cocina",
     origen: "ADONIS",
   };
 }
@@ -1063,7 +1075,26 @@ export default function InventarioPage() {
                                 {[item.laboratorio, item.principioActivo].filter(Boolean).join(" — ")}
                               </span>
                             )}
-                            {(item.fechaVencimiento || item.cadenaFrio) && (
+                            {(item.marca || item.presentacion) && (
+                              <span className="block mt-0.5 text-[10px] font-semibold text-slate-400 truncate">
+                                {[item.marca, item.presentacion].filter(Boolean).join(" — ")}
+                              </span>
+                            )}
+                            {item.modelo && (
+                              <span className="block mt-0.5 text-[10px] font-semibold text-slate-400 truncate">
+                                {[item.modelo, item.voltaje, item.condicion].filter(Boolean).join(" — ")}
+                              </span>
+                            )}
+                            {((item.variantes?.length > 0) || (item.toppings?.length > 0)) && (
+                              <span className="block mt-0.5 text-[10px] font-semibold text-slate-400 truncate">
+                                {[
+                                  item.variantes?.length > 0 ? `${item.variantes.length} sabor${item.variantes.length === 1 ? "" : "es"}` : "",
+                                  item.toppings?.length > 0 ? `${item.toppings.length} topping${item.toppings.length === 1 ? "" : "s"}` : "",
+                                  item.areaDespacho,
+                                ].filter(Boolean).join(" — ")}
+                              </span>
+                            )}
+                            {(item.fechaVencimiento || item.cadenaFrio || item.mesesGarantia > 0 || item.costo > 0) && (
                               <span className="flex items-center gap-1.5 mt-1 flex-wrap">
                                 {item.fechaVencimiento && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-500">
@@ -1073,6 +1104,16 @@ export default function InventarioPage() {
                                 {item.cadenaFrio && (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-50 border border-cyan-200 text-[9px] font-bold text-cyan-700">
                                     <Snowflake className="w-2.5 h-2.5" /> Cadena de Frío
+                                  </span>
+                                )}
+                                {item.mesesGarantia > 0 && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-500">
+                                    Garantía: {item.mesesGarantia} meses
+                                  </span>
+                                )}
+                                {item.costo > 0 && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-500">
+                                    Costo: ${item.costo.toFixed(2)}
                                   </span>
                                 )}
                               </span>
