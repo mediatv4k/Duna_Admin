@@ -58,10 +58,17 @@ async function cargarCatalogoAdonis(storeId, signal) {
   const detalles = await Promise.allSettled(
     items.map((item) => pedirJsonAdonis(`${ADONIS_BASE}/product/${item.id}/web`, signal))
   );
-  return items.map((item, i) => ({
-    ...item,
-    stock: detalles[i].status === "fulfilled" ? Number(detalles[i].value?.data?.stock ?? 0) : 0,
-  }));
+  // El listado público (/products/store/:id) no trae "metadata" (ver claves reales verificadas en
+  // ARQUITECTURA.md), pero el detalle (/product/:id/web) sí — ya se pedía solo para el stock; ahora
+  // también se aprovecha su metadata (ej. metadata.farmacia) sin ninguna llamada nueva a la red.
+  return items.map((item, i) => {
+    const detalle = detalles[i].status === "fulfilled" ? detalles[i].value?.data : null;
+    return {
+      ...item,
+      stock: detalle ? Number(detalle.stock ?? 0) : 0,
+      metadata: detalle?.metadata || null,
+    };
+  });
 }
 
 async function cargarTasaAdonis(storeId, signal) {
@@ -107,6 +114,9 @@ function nombreCategoriaAdonis(item) {
 
 // Esquema plano que consumen la tabla, la edición y las exportaciones
 function mapearProductoAdonis(item) {
+  // Ficha técnica de farmacia: mismo namespace verificado en ARQUITECTURA.md (metadata.farmacia), leída
+  // con optional chaining porque la mayoría de los productos (fuera de ese nicho) no la traen.
+  const farmacia = item.metadata?.farmacia;
   return {
     id: String(item.code || item.sku || item.id).replaceAll("/", "-"),
     adonisId: item.id,
@@ -119,6 +129,11 @@ function mapearProductoAdonis(item) {
     descripcion: String(item.description || "").slice(0, 250),
     image: item.image || item.pictureUrl || IMAGEN_DEFECTO,
     outOfStock: Boolean(item.outOfStock),
+    principioActivo: farmacia?.principioActivo || "",
+    laboratorio: farmacia?.laboratorio || "",
+    presentacion: farmacia?.presentacion || "",
+    fechaVencimiento: farmacia?.fechaVencimiento || "",
+    cadenaFrio: Boolean(farmacia?.requiereFrio),
     origen: "ADONIS",
   };
 }
@@ -1041,7 +1056,28 @@ export default function InventarioPage() {
                               onError={(e) => { e.target.src = IMAGEN_DEFECTO; }}
                             />
                           </td>
-                          <td className="p-4 font-bold text-slate-800 max-w-xs">{item.name}</td>
+                          <td className="p-4 font-bold text-slate-800 max-w-xs">
+                            {item.name}
+                            {(item.principioActivo || item.laboratorio) && (
+                              <span className="block mt-0.5 text-[10px] font-semibold text-slate-400 truncate">
+                                {[item.laboratorio, item.principioActivo].filter(Boolean).join(" — ")}
+                              </span>
+                            )}
+                            {(item.fechaVencimiento || item.cadenaFrio) && (
+                              <span className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                {item.fechaVencimiento && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-500">
+                                    Vence: {item.fechaVencimiento}
+                                  </span>
+                                )}
+                                {item.cadenaFrio && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-50 border border-cyan-200 text-[9px] font-bold text-cyan-700">
+                                    <Snowflake className="w-2.5 h-2.5" /> Cadena de Frío
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </td>
                           <td className="p-4 text-slate-500 font-medium">{item.code}</td>
                           {modoConsolidado && (
                             <td className="p-4">

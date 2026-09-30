@@ -2079,6 +2079,25 @@ export default function ComerciosProductosPage() {
                                 {[item.marca, [item.presentacion, item.volumen].filter(Boolean).join(" · ")].filter(Boolean).join(" — ")}
                               </span>
                             )}
+                            {(item.principioActivo || item.laboratorio) && (
+                              <span className="block mt-0.5 text-[10px] font-semibold text-slate-400 truncate">
+                                {[item.laboratorio, item.principioActivo].filter(Boolean).join(" — ")}
+                              </span>
+                            )}
+                            {(item.fechaVencimiento || item.cadenaFrio) && (
+                              <span className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                {item.fechaVencimiento && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-500">
+                                    Vence: {item.fechaVencimiento}
+                                  </span>
+                                )}
+                                {item.cadenaFrio && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-50 border border-cyan-200 text-[9px] font-bold text-cyan-700">
+                                    <Snowflake className="w-2.5 h-2.5" /> Cadena de Frío
+                                  </span>
+                                )}
+                              </span>
+                            )}
                           </td>
                           <td className="p-4 text-slate-500 font-medium">{item.code}</td>
                           <td className="p-4 text-slate-600">{item.categoria || "—"}</td>
