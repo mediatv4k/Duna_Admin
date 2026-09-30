@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings, Boxes, ClipboardList, Megaphone, Clock, LogOut, MonitorPlay, BarChart3, Wallet, CreditCard } from "lucide-react";
+import { Settings, Boxes, ClipboardList, Megaphone, Clock, LogOut, MonitorPlay, BarChart3, Wallet, CreditCard, Store } from "lucide-react";
 import { cerrarSesionComercio, obtenerUsuarioComercio, esVendedorComercio } from "@/lib/commerceServices";
 
 // Sidebar interno de la gestión de una tienda específica del Portal de Aliados Comerciales (rediseño
@@ -16,6 +16,7 @@ import { cerrarSesionComercio, obtenerUsuarioComercio, esVendedorComercio } from
 // aviso en cualquiera de esos tres archivos.
 
 const ITEMS_ADMIN = [
+  { id: "masterTiendas", href: "/admin/tiendas", label: "Master de Tiendas", icono: Store },
   { id: "configuracion", href: "/comercios/configuracion", label: "Configuración", icono: Settings },
   { id: "kardex", href: "/comercios/productos", label: "Kardex", icono: Boxes },
   { id: "mostrador", href: "/comercios/mostrador", label: "Mostrador", icono: MonitorPlay },
