@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Save, Check, Hash, Store, MapPin, User, Phone, Briefcase,
-  LocateFixed, ExternalLink, AlertTriangle,
+  LocateFixed, ExternalLink, AlertTriangle, DollarSign, Bike, Gift,
 } from "lucide-react";
 import { obtenerTokenComercio, obtenerUsuarioComercio, actualizarTiendaComercio } from "@/lib/commerceServices";
 import SidebarTienda from "@/components/comercios/SidebarTienda";
@@ -77,6 +77,20 @@ export default function ConfiguracionComercioPage() {
   const [errorBackend, setErrorBackend] = useState("");
   const [ubicando, setUbicando] = useState(false);
   const [errorUbicacion, setErrorUbicacion] = useState("");
+
+  // Migración de la vieja pantalla de configuración de Adonis: solo estructura visual por ahora, sin
+  // persistencia (ni localStorage ni backend) — a propósito, hasta que exista un contrato real para
+  // estos campos. No se incluyen en handleGuardar ni en claveConfigLocal.
+  const [finanzas, setFinanzas] = useState({
+    balanceMinimo: "", creditoMaximo: "", manejaStock: "Si",
+    tipoFacturacion: "Factura Fiscal SENIAT", status: "Activo", visibleMarketplace: true,
+  });
+  const [delivery, setDelivery] = useState({
+    tipoCobro: "Monto Fijo", montoDelivery: "", montoMinimo: "", montoMaximo: "",
+  });
+  const [propinas, setPropinas] = useState({
+    propina1: "", propina2: "", propina3: "", propina4: "", propinaDefault: "",
+  });
 
   useEffect(() => {
     if (!storeId) return;
@@ -326,6 +340,160 @@ export default function ConfiguracionComercioPage() {
                 )}
               </div>
               {errorUbicacion && <p className="text-[11px] font-bold text-rose-600">{errorUbicacion}</p>}
+            </div>
+
+            {/* Migradas de la vieja pantalla de Adonis — solo estructura visual, sin conexión a backend
+                todavía (ver comentario junto al estado "finanzas" arriba). */}
+            <div className="pt-2 border-t border-dashed border-slate-200 space-y-3">
+              <h2 className="text-xs font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                <DollarSign className="w-3.5 h-3.5 text-[#FE6712]" /> Finanzas y Operaciones
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Balance mínimo</label>
+                  <input
+                    type="number" step="0.01" inputMode="decimal"
+                    value={finanzas.balanceMinimo}
+                    onChange={(e) => setFinanzas((prev) => ({ ...prev, balanceMinimo: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Crédito máximo</label>
+                  <input
+                    type="number" step="0.01" inputMode="decimal"
+                    value={finanzas.creditoMaximo}
+                    onChange={(e) => setFinanzas((prev) => ({ ...prev, creditoMaximo: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Maneja Stock</label>
+                  <select
+                    value={finanzas.manejaStock}
+                    onChange={(e) => setFinanzas((prev) => ({ ...prev, manejaStock: e.target.value }))}
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                  >
+                    <option value="Si">Sí</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Tipo de Facturación</label>
+                  <select
+                    value={finanzas.tipoFacturacion}
+                    onChange={(e) => setFinanzas((prev) => ({ ...prev, tipoFacturacion: e.target.value }))}
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                  >
+                    <option value="Factura Fiscal SENIAT">Factura Fiscal SENIAT</option>
+                    <option value="Nota de Entrega">Nota de Entrega</option>
+                    <option value="Ambas">Ambas</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Status</label>
+                  <select
+                    value={finanzas.status}
+                    onChange={(e) => setFinanzas((prev) => ({ ...prev, status: e.target.value }))}
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                  >
+                    <option value="Activo">Activo</option>
+                    <option value="Suspendido">Suspendido</option>
+                  </select>
+                </div>
+              </div>
+              <label className="flex items-center gap-2.5 cursor-pointer w-fit">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={finanzas.visibleMarketplace}
+                  onClick={() => setFinanzas((prev) => ({ ...prev, visibleMarketplace: !prev.visibleMarketplace }))}
+                  className={`w-10 h-6 shrink-0 rounded-full relative transition-colors ${finanzas.visibleMarketplace ? "bg-[#FE6712]" : "bg-slate-200"}`}
+                >
+                  <span className={`w-5 h-5 bg-white rounded-full shadow-sm absolute top-[2px] transition-all ${finanzas.visibleMarketplace ? "left-[18px]" : "left-[2px]"}`} />
+                </button>
+                <span className="text-[11px] font-bold text-slate-600">Visible en Marketplace</span>
+              </label>
+            </div>
+
+            <div className="pt-2 border-t border-dashed border-slate-200 space-y-3">
+              <h2 className="text-xs font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                <Bike className="w-3.5 h-3.5 text-[#FE6712]" /> Configuración de Delivery
+              </h2>
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Tipo de cobro Delivery</label>
+                <select
+                  value={delivery.tipoCobro}
+                  onChange={(e) => setDelivery((prev) => ({ ...prev, tipoCobro: e.target.value }))}
+                  className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                >
+                  <option value="Monto Fijo">Monto Fijo</option>
+                  <option value="Por Distancia (KM)">Por Distancia (KM)</option>
+                  <option value="Gratis">Gratis</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Monto Delivery</label>
+                  <input
+                    type="number" step="0.01" inputMode="decimal"
+                    value={delivery.montoDelivery}
+                    onChange={(e) => setDelivery((prev) => ({ ...prev, montoDelivery: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Monto Mínimo (Pedido)</label>
+                  <input
+                    type="number" step="0.01" inputMode="decimal"
+                    value={delivery.montoMinimo}
+                    onChange={(e) => setDelivery((prev) => ({ ...prev, montoMinimo: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Monto Máximo</label>
+                  <input
+                    type="number" step="0.01" inputMode="decimal"
+                    value={delivery.montoMaximo}
+                    onChange={(e) => setDelivery((prev) => ({ ...prev, montoMaximo: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-dashed border-slate-200 space-y-3">
+              <h2 className="text-xs font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                <Gift className="w-3.5 h-3.5 text-[#FE6712]" /> Sistema de Propinas
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                {[
+                  { clave: "propina1", etiqueta: "Propina 1" },
+                  { clave: "propina2", etiqueta: "Propina 2" },
+                  { clave: "propina3", etiqueta: "Propina 3" },
+                  { clave: "propina4", etiqueta: "Propina 4" },
+                  { clave: "propinaDefault", etiqueta: "Propina Default" },
+                ].map(({ clave, etiqueta }) => (
+                  <div key={clave}>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1.5">{etiqueta}</label>
+                    <input
+                      type="number" step="1" inputMode="numeric"
+                      value={propinas[clave]}
+                      onChange={(e) => setPropinas((prev) => ({ ...prev, [clave]: e.target.value }))}
+                      placeholder="0%"
+                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Métodos de Pago y Horario de Atención se independizaron a su propia página, ver
