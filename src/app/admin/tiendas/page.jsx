@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import SidebarTienda from "@/components/comercios/SidebarTienda";
+import ConfiguracionGastronomica from "@/components/comercios/ConfiguracionGastronomica";
 
 // ==============================================================================
 // MASTER DE TIENDAS — DATOS DE EJEMPLO, SIN CONECTAR A ADONIS
@@ -105,7 +106,7 @@ function MenuAcciones({ onImpersonar, onCambiarEstatus, onEditar, estatus }) {
 
 export default function MasterTiendasPage() {
   const router = useRouter();
-  const { isAdmin, loading: cargandoAuth, logout } = useAuth();
+  const { isAdmin, loading: cargandoAuth, logout, user } = useAuth();
 
   const [tiendas, setTiendas] = useState(() => cargarTiendasDemo());
   const [busqueda, setBusqueda] = useState("");
@@ -339,6 +340,7 @@ export default function MasterTiendasPage() {
                                   <Check className="w-3.5 h-3.5" /> Guardar
                                 </button>
                               </div>
+                              {t.nicho === "Gastronomía & Heladería" && <ConfiguracionGastronomica token={user?.token} storeId={t.id} />}
                             </td>
                           </tr>
                         )}
