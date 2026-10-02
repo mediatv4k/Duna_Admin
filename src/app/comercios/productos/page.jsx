@@ -197,6 +197,148 @@ async function subirImagenComercio(idUsuario, archivo, token, onProgreso) {
   throw ultimoError;
 }
 
+// --- Normalización al formato del catálogo: cuadrado 512x512 ---
+// Toda imagen que carga el comercio llega a Adonis ya en 512x512 (JPEG, fondo blanco). Si ya es cuadrada se
+// redimensiona aquí mismo; si es rectangular (foto apaisada o vertical, banner, diseño gráfico) se pide a la IA
+// que la recomponga en cuadrado: POST /api/comercios/normalizar-imagen (Gemini; la API key vive solo en el
+// servidor). Si la IA no responde o no está configurada, la imagen se encaja completa con márgenes blancos:
+// la carga nunca queda bloqueada por la IA.
+const LADO_IMAGEN_CATALOGO = 512;
+const LADO_MAX_ENVIO_IA = 1024;
+// Diferencia máxima entre ancho y alto (2%) para tratar la imagen como cuadrada y no gastar una llamada de IA
+const TOLERANCIA_CUADRADA = 0.02;
+const RUTA_NORMALIZAR_IMAGEN = "/api/comercios/normalizar-imagen";
+const ESPERA_IA_MS = 70000;
+
+// Decodifica con <img>, que respeta la orientación EXIF de las fotos de teléfono. `liberar` suelta el blob
+// cuando ya se terminó de dibujar.
+function cargarImagenDeBlob(blob, mensajeError) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth && img.naturalHeight) {
+        resolve({ img, liberar: () => URL.revokeObjectURL(url) });
+        return;
+      }
+      URL.revokeObjectURL(url);
+      reject(new Error(mensajeError));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(mensajeError));
+    };
+    img.src = url;
+  });
+}
+
+// Dibuja la imagen sobre un lienzo blanco (aplana transparencias) y lo exporta como JPEG
+function exportarLienzo(img, anchoLienzo, altoLienzo, x, y, ancho, alto) {
+  const lienzo = document.createElement("canvas");
+  lienzo.width = anchoLienzo;
+  lienzo.height = altoLienzo;
+  const ctx = lienzo.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, anchoLienzo, altoLienzo);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, x, y, ancho, alto);
+  return new Promise((resolve, reject) => {
+    lienzo.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("El navegador no pudo procesar la imagen."))),
+      "image/jpeg",
+      0.92
+    );
+  });
+}
+
+// Lleva la imagen a un cuadrado de LADO_IMAGEN_CATALOGO: "cubrir" llena el cuadrado recortando el sobrante;
+// "contener" la muestra completa y centrada, con márgenes blancos si no es cuadrada.
+function encuadrarImagen(img, modo) {
+  const lado = LADO_IMAGEN_CATALOGO;
+  const escala = (modo === "cubrir" ? Math.max : Math.min)(lado / img.naturalWidth, lado / img.naturalHeight);
+  const ancho = Math.max(1, Math.round(img.naturalWidth * escala));
+  const alto = Math.max(1, Math.round(img.naturalHeight * escala));
+  return exportarLienzo(img, lado, lado, Math.round((lado - ancho) / 2), Math.round((lado - alto) / 2), ancho, alto);
+}
+
+// Copia reducida (lado mayor <= LADO_MAX_ENVIO_IA) para la IA: pesa unos cientos de KB aunque el original pese 10 MB
+function reducirImagenParaIa(img) {
+  const escala = Math.min(1, LADO_MAX_ENVIO_IA / Math.max(img.naturalWidth, img.naturalHeight));
+  const ancho = Math.max(1, Math.round(img.naturalWidth * escala));
+  const alto = Math.max(1, Math.round(img.naturalHeight * escala));
+  return exportarLienzo(img, ancho, alto, 0, 0, ancho, alto);
+}
+
+// Devuelve el Blob de la imagen rediseñada por la IA, o lanza un Error cuyo mensaje es el motivo (en minúscula
+// y sin punto final: se muestra a continuación de "sin rediseño de IA: ").
+async function pedirRedisenoIa(blob, token) {
+  const formData = new FormData();
+  formData.append("imagen", blob, "imagen.jpg");
+  const control = new AbortController();
+  const temporizador = setTimeout(() => control.abort(), ESPERA_IA_MS);
+  try {
+    const res = await fetch(RUTA_NORMALIZAR_IMAGEN, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+      signal: control.signal,
+    });
+    if (!res.ok) {
+      let datos = null;
+      try {
+        datos = await res.json();
+      } catch (e) {
+        datos = null;
+      }
+      throw new Error(datos?.message || `el servicio de IA respondió HTTP ${res.status}`);
+    }
+    const rediseno = await res.blob();
+    if (!rediseno.size || !rediseno.type.startsWith("image/")) {
+      throw new Error("el servicio de IA no devolvió una imagen");
+    }
+    return rediseno;
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("la IA tardó demasiado en responder");
+    if (err instanceof TypeError) throw new Error("no hubo conexión con el servicio de IA");
+    throw err;
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
+
+// Devuelve { archivo, aviso }: el File 512x512 listo para subir y una nota de lo que se hizo con la imagen
+async function normalizarImagenCatalogo(archivo, token) {
+  const { img, liberar } = await cargarImagenDeBlob(archivo, "No se pudo leer la imagen. Prueba con otro archivo PNG, JPG o WEBP.");
+  try {
+    const nombre = `${archivo.name.replace(/\.[^.]*$/, "") || "imagen"}.jpg`;
+    const aArchivo = (blob) => new File([blob], nombre, { type: "image/jpeg" });
+    const ladoMayor = Math.max(img.naturalWidth, img.naturalHeight);
+    if (Math.abs(img.naturalWidth - img.naturalHeight) <= ladoMayor * TOLERANCIA_CUADRADA) {
+      return { archivo: aArchivo(await encuadrarImagen(img, "cubrir")), aviso: "Imagen ajustada a 512×512." };
+    }
+    try {
+      const rediseno = await pedirRedisenoIa(await reducirImagenParaIa(img), token);
+      const resultado = await cargarImagenDeBlob(rediseno, "la IA devolvió una imagen ilegible");
+      try {
+        return {
+          archivo: aArchivo(await encuadrarImagen(resultado.img, "contener")),
+          aviso: "Imagen rediseñada con IA al formato cuadrado 512×512. Revísala antes de guardar.",
+        };
+      } finally {
+        resultado.liberar();
+      }
+    } catch (err) {
+      console.error(err);
+      return {
+        archivo: aArchivo(await encuadrarImagen(img, "contener")),
+        aviso: `Imagen ajustada a 512×512 con márgenes blancos, sin rediseño de IA: ${err.message}.`,
+      };
+    }
+  } finally {
+    liberar();
+  }
+}
+
 // Namespace del objeto anidado de metadata según el NICHO DEL PRODUCTO — nunca de la tienda: una misma
 // tienda mezcla nichos (confirmado con datos reales de la tienda 47, que junto a farmacia trae productos
 // "Alimentos y Bebidas" y "COSMETICOS"), así que un storeNiche a nivel de tienda sería incorrecto.
@@ -848,7 +990,8 @@ function SelectorTienda({ tiendas, activaId, nombreActivo, cargandoLista, errorL
 
 // Zona de carga de imagen del modal: arrastrar y soltar o elegir archivo, vista previa inmediata (la local mientras
 // sube, luego la URL del servidor), progreso, y reemplazar/quitar. Es presentacional: la subida la hace el padre.
-function SubidaImagen({ valor, vistaPreviaLocal, subiendo, progreso, error, onArchivo, onQuitar }) {
+// `preparando` cubre el paso previo a la subida (llevar la imagen a 512x512) y `aviso` cuenta qué se le hizo.
+function SubidaImagen({ valor, vistaPreviaLocal, subiendo, preparando, progreso, error, aviso, onArchivo, onQuitar }) {
   const inputRef = useRef(null);
   const [arrastrando, setArrastrando] = useState(false);
   const mostrada = vistaPreviaLocal || valor;
@@ -895,12 +1038,12 @@ function SubidaImagen({ valor, vistaPreviaLocal, subiendo, progreso, error, onAr
           {subiendo && (
             <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center gap-0.5">
               <Loader2 className="w-5 h-5 text-[#FE6712] animate-spin" />
-              <span className="text-[10px] font-black text-slate-700">{progreso}%</span>
+              {!preparando && <span className="text-[10px] font-black text-slate-700">{progreso}%</span>}
             </div>
           )}
         </div>
         <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="text-[11px] text-slate-500">Arrastra una imagen aquí o elige un archivo. PNG, JPG o WEBP · máx. {MAX_IMAGEN_MB} MB.</p>
+          <p className="text-[11px] text-slate-500">Arrastra una imagen aquí o elige un archivo. PNG, JPG o WEBP · máx. {MAX_IMAGEN_MB} MB. Se ajusta sola al formato cuadrado 512×512.</p>
           <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
@@ -921,7 +1064,10 @@ function SubidaImagen({ valor, vistaPreviaLocal, subiendo, progreso, error, onAr
               </button>
             )}
           </div>
-          {subiendo && (
+          {subiendo && preparando && (
+            <p role="status" className="text-[11px] font-bold text-slate-600">Ajustando al formato cuadrado 512×512… puede tardar unos segundos.</p>
+          )}
+          {subiendo && !preparando && (
             <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progreso} className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
               <div className="h-full bg-[#FE6712] transition-all" style={{ width: `${progreso}%` }} />
             </div>
@@ -929,6 +1075,7 @@ function SubidaImagen({ valor, vistaPreviaLocal, subiendo, progreso, error, onAr
         </div>
       </div>
       {error && <p role="alert" className="text-[11px] font-bold text-rose-600">{error}</p>}
+      {!error && aviso && <p role="status" className="text-[11px] text-slate-500">{aviso}</p>}
     </div>
   );
 }
@@ -1029,8 +1176,12 @@ export default function ComerciosProductosPage() {
   // Subida de imágenes del modal: el usuario dueño del token (no la tienda) es el que va en la ruta del upload
   const idUsuarioSubida = comercio?.userId ?? comercio?.user?.id ?? comercio?.id ?? null;
   const [subiendoImagen, setSubiendoImagen] = useState(false);
+  // true mientras la imagen se lleva a 512x512 (redimensión local o rediseño con IA), antes de empezar a subirla
+  const [preparandoImagen, setPreparandoImagen] = useState(false);
   const [progresoImagen, setProgresoImagen] = useState(0);
   const [errorImagen, setErrorImagen] = useState("");
+  // Nota de lo que se hizo con la última imagen cargada; solo se muestra mientras esa misma imagen siga puesta
+  const [avisoImagen, setAvisoImagen] = useState({ url: "", texto: "" });
   const [vistaPreviaLocal, setVistaPreviaLocal] = useState("");
   const sesionModal = useRef(0);
   const nombreSesion = comercio?.name || comercio?.nombre || "";
@@ -1341,13 +1492,26 @@ export default function ComerciosProductosPage() {
       setErrorImagen("No se puede subir la imagen: falta el identificador de tu usuario en la sesión. Vuelve a iniciar sesión.");
       return;
     }
-    const previa = URL.createObjectURL(archivo);
+    let previa = URL.createObjectURL(archivo);
     setVistaPreviaLocal(previa);
     setProgresoImagen(0);
+    setAvisoImagen({ url: "", texto: "" });
+    setPreparandoImagen(true);
     setSubiendoImagen(true);
     try {
-      const url = await subirImagenComercio(idUsuarioSubida, archivo, token, (p) => { if (vigente()) setProgresoImagen(p); });
-      if (vigente()) setFormData((prev) => ({ ...prev, image: url }));
+      // Antes de subir, la imagen se lleva al formato del catálogo (cuadrado 512x512) y la vista previa pasa a
+      // mostrar ese resultado, que es lo que realmente se sube.
+      const normalizada = await normalizarImagenCatalogo(archivo, token);
+      if (!vigente()) return;
+      URL.revokeObjectURL(previa);
+      previa = URL.createObjectURL(normalizada.archivo);
+      setVistaPreviaLocal(previa);
+      setPreparandoImagen(false);
+      const url = await subirImagenComercio(idUsuarioSubida, normalizada.archivo, token, (p) => { if (vigente()) setProgresoImagen(p); });
+      if (vigente()) {
+        setFormData((prev) => ({ ...prev, image: url }));
+        setAvisoImagen({ url, texto: normalizada.aviso });
+      }
     } catch (err) {
       console.error(err);
       if (vigente()) setErrorImagen(err.message || "No se pudo subir la imagen.");
@@ -1355,6 +1519,7 @@ export default function ComerciosProductosPage() {
       URL.revokeObjectURL(previa);
       if (vigente()) {
         setSubiendoImagen(false);
+        setPreparandoImagen(false);
         setVistaPreviaLocal("");
       }
     }
@@ -1369,7 +1534,9 @@ export default function ComerciosProductosPage() {
   const reiniciarSubidaImagen = () => {
     sesionModal.current += 1;
     setErrorImagen("");
+    setAvisoImagen({ url: "", texto: "" });
     setSubiendoImagen(false);
+    setPreparandoImagen(false);
     setProgresoImagen(0);
     setVistaPreviaLocal("");
   };
@@ -2317,8 +2484,10 @@ export default function ComerciosProductosPage() {
                 valor={formData.image}
                 vistaPreviaLocal={vistaPreviaLocal}
                 subiendo={subiendoImagen}
+                preparando={preparandoImagen}
                 progreso={progresoImagen}
                 error={errorImagen}
+                aviso={avisoImagen.url && avisoImagen.url === formData.image ? avisoImagen.texto : ""}
                 onArchivo={handleArchivoImagen}
                 onQuitar={handleQuitarImagen}
               />
