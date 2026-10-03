@@ -18,13 +18,20 @@ import ConfiguracionGastronomica from "@/components/comercios/ConfiguracionGastr
 // (cargarTiendasComercio), duplicada aquí a propósito para no acoplar este módulo al portal de comercios.
 // Lo que el servidor no entregue se rellena con valores por defecto, para que la tabla nunca reciba undefined.
 //
-// Verificado el 2026-10-03 contra el backend real SIN sesión válida: GET /store responde 401
-// {"errors":[{"message":"E_INVALID_API_TOKEN: Invalid API token"}]}, con o sin apiKey. La forma de la respuesta
-// CON sesión válida no está confirmada (nadie ha podido leerla), así que el mapeo es defensivo. Lo único
-// confirmado de un comercio viene de data.store en GET /store/:id/payment/info: name (a veces null), manager
-// (a veces vacío), phone (con prefijo 58), status (OPEN, CLOSED o INACTIVE) y categories (ids, no nombres).
-// No existe ningún campo de nicho: toda tienda llega como «Sin clasificar» hasta que el administrador lo
-// elija aquí, y esa elección vive solo en esta vista (no se guarda en ningún lado).
+// Sin sesión válida GET /store responde 401 {"errors":[{"message":"E_INVALID_API_TOKEN: Invalid API token"}]}
+// (verificado el 2026-10-03); con sesión válida el mapeo sigue siendo defensivo. Campos de cada comercio, según el
+// payload real aportado por el equipo el 2026-10-03: name (a veces null), manager (el representante; a veces
+// vacío), phone (con prefijo 58), status y categories. status: OPEN, CLOSED y ACTIVE se muestran Activo e
+// INACTIVE Suspendido. categories es un texto con ids separados por comas, y cada id es el UUID (`code`) o el
+// número (`id`) de una categoría de GET /product/categories?unused=true, ruta pública (solo apiKey, sin Bearer)
+// que se pide junto con las tiendas para traducirlos. No existe un campo de nicho: el nicho que se ve son esos
+// nombres, sin repetir (los ids que el diccionario no conoce se descartan), o «Sin clasificar» si no queda
+// ninguno. Esa traducción, y cualquier cambio de nicho hecho aquí, viven solo en esta vista.
+//
+// Ficha Gastronómica automática: la fila de edición muestra ConfiguracionGastronomica cuando el nicho que se ve
+// menciona algún término de TERMINOS_GASTRONOMIA (sin distinguir mayúsculas) o, mientras el nicho siga siendo el
+// que entregó el servidor, cuando lo menciona el grupo de sus categorías (campo `super` del diccionario, p. ej.
+// «Comida»: sin él, entre las 23 categorías reales solo «Heladerías» activaría la ficha).
 //
 // Editar, Suspender y «Entrar como comercio» siguen siendo locales: no escriben en el servidor.
 //
@@ -33,8 +40,8 @@ import ConfiguracionGastronomica from "@/components/comercios/ConfiguracionGastr
 // ERP interno es "duna_user", ver AuthContext.jsx; "iac_store" es un token distinto, del Portal de
 // Comercios, sin relación con el acceso de administrador aquí).
 //
-// Mismo vocabulario de nichos que comercios/productos/page.jsx (NICHOS), para que el filtro describa
-// exactamente los mismos rubros que ya existen en el resto del ERP.
+// Vocabulario de nichos de comercios/productos/page.jsx (NICHOS): solo alimenta el selector manual de nicho de la
+// fila de edición. El filtro de nichos de la tabla lista las categorías reales de las tiendas cargadas.
 const NICHOS_FILTRO = [
   "General",
   "Farmacia, Salud & Cuidado Personal",
@@ -57,10 +64,12 @@ const NO_REGISTRADO = "No registrado";
 const SIN_CLASIFICAR = "Sin clasificar";
 // Tope de páginas de GET /store: evita un bucle desbocado si el servidor devolviera un last_page absurdo
 const MAX_PAGINAS_TIENDAS = 100;
-// status real de un comercio: OPEN, CLOSED (abierto o cerrado ahora, pero en el sistema) o INACTIVE. La tabla
-// solo distingue Activo de Suspendido: únicamente lo que el servidor marca como dado de baja se muestra
-// Suspendido. Si CLOSED debiera contar como suspendido, basta con agregarlo a esta lista.
+// status de un comercio: OPEN, CLOSED y ACTIVE se muestran Activo; INACTIVE, Suspendido (regla confirmada por el
+// equipo el 2026-10-03). Cualquier otro valor, o ninguno, también se muestra Activo: solo lo que el servidor
+// marca como dado de baja se suspende.
 const ESTATUS_SUSPENDIDOS = ["INACTIVE", "INACTIVO", "SUSPENDED", "SUSPENDIDO"];
+// Términos que activan sola la Ficha Gastronómica (se buscan en minúsculas, con los acentos tal cual)
+const TERMINOS_GASTRONOMIA = ["gastronomía", "restaurante", "heladería", "pizza", "comida", "café", "bebida", "yogurt"];
 
 // Texto limpio de un valor del servidor, o null si no es texto/número o viene vacío
 const textoONulo = (valor) => {
@@ -76,16 +85,46 @@ const primerTexto = (...candidatos) => {
   return null;
 };
 
+// Traduce las categorías de un comercio (ids separados por comas: UUID y/o número) con el diccionario. Los nombres
+// salen sin repetir y en orden de aparición; los ids que el diccionario no conoce se descartan. `grupos` reúne los
+// grupos (campo `super`) de las categorías traducidas.
+function traducirCategorias(valor, diccionario) {
+  const fichas = Array.isArray(valor) ? valor : String(valor ?? "").split(",");
+  const nombres = [];
+  const grupos = [];
+  for (const ficha of fichas) {
+    const clave = textoONulo(ficha);
+    const entrada = clave ? diccionario.get(clave.toLowerCase()) : undefined;
+    if (!entrada) continue;
+    if (!nombres.includes(entrada.nombre)) nombres.push(entrada.nombre);
+    if (entrada.grupo && !grupos.includes(entrada.grupo)) grupos.push(entrada.grupo);
+  }
+  return { nombres, grupos };
+}
+
+const mencionaGastronomia = (texto) => {
+  const minusculas = String(texto ?? "").toLowerCase();
+  return TERMINOS_GASTRONOMIA.some((termino) => minusculas.includes(termino));
+};
+// El nicho que se ve decide; el grupo de las categorías solo cuenta mientras el nicho siga siendo el del servidor
+// (si el administrador lo cambió a mano aquí, manda su elección).
+const esGastronomia = (t) => mencionaGastronomia(t.nicho) || (t.nicho === t.nichoServidor && mencionaGastronomia(t.grupos));
+
 // Convierte un comercio de Adonis al formato de la tabla. Devuelve null si no tiene id (no se puede operar
 // sobre él). Todos los textos salen como string: la búsqueda y el filtro llaman toLowerCase() sobre ellos.
-function mapearTienda(t) {
+function mapearTienda(t, diccionario) {
   if (t === null || typeof t !== "object") return null;
   const id = t.id ?? t._id;
   if (id === undefined || id === null || id === "") return null;
+  const { nombres, grupos } = traducirCategorias(t.categories, diccionario);
+  const nicho = primerTexto(t.nicho, t.niche) ?? (nombres.length ? nombres.join(", ") : SIN_CLASIFICAR);
   return {
     id,
     nombre: primerTexto(t.name, t.nombre) ?? `Tienda #${id}`,
-    nicho: primerTexto(t.nicho, t.niche) ?? SIN_CLASIFICAR,
+    nicho,
+    nichoServidor: nicho,
+    categorias: nombres,
+    grupos: grupos.join(", "),
     representante: primerTexto(t.manager, t.representante, t.responsable) ?? NO_REGISTRADO,
     contacto: primerTexto(t.phone, t.telefono, t.contacto) ?? NO_REGISTRADO,
     estatus: ESTATUS_SUSPENDIDOS.includes(String(t.status ?? "").trim().toUpperCase()) ? "SUSPENDIDO" : "ACTIVO",
@@ -95,7 +134,8 @@ function mapearTienda(t) {
 // GET /store con la apiKey y el Bearer del administrador. La forma exacta de la respuesta no está confirmada,
 // así que se busca el arreglo en las envolturas habituales (las mismas que ya prueban inventario y el portal)
 // y se sigue la paginación si el servidor la anuncia. Si no hay ningún arreglo, es un error: un directorio
-// vacío por no entender la respuesta engañaría más que un aviso.
+// vacío por no entender la respuesta engañaría más que un aviso. Devuelve los comercios tal como llegan; se
+// mapean en cargarDirectorioAdonis.
 async function cargarTiendasAdonis(token, signal) {
   const pedirPagina = async (pagina) => {
     const res = await fetch(`${ADONIS_BASE}/store${pagina > 1 ? `?page=${pagina}` : ""}`, {
@@ -133,11 +173,63 @@ async function cargarTiendasAdonis(token, signal) {
     crudas = crudas.concat(extraerLista(await pedirPagina(p)));
   }
 
+  return crudas;
+}
+
+// GET /product/categories?unused=true: ruta pública (solo apiKey, sin Bearer). Verificada el 2026-10-03: devuelve
+// 23 categorías {id (número), code (UUID), name, super (grupo, p. ej. «Comida»), status…}, con espacios sobrantes
+// en algunos nombres. Las tiendas citan sus categorías por `code` y, a veces, por `id`: el diccionario indexa por
+// los dos (UUID en minúsculas).
+async function cargarCategoriasAdonis(signal) {
+  const res = await fetch(`${ADONIS_BASE}/product/categories?unused=true`, { headers: ADONIS_HEADERS, signal });
+  let datos = null;
+  try {
+    datos = await res.json();
+  } catch (e) {
+    datos = null;
+  }
+  if (!res.ok || !datos || (datos.code !== undefined && datos.code !== 1)) {
+    const aTexto = (m) => (m !== null && typeof m === "object" ? JSON.stringify(m) : m);
+    const detalle = aTexto(datos?.message) || aTexto(datos?.errors?.[0]?.message) || `Adonis respondió HTTP ${res.status}`;
+    throw new Error(`${String(detalle).replace(/[.\s]+$/, "")}.`);
+  }
+  const lista = [datos.data, datos.data?.categories, datos.data?.data, datos].find(Array.isArray);
+  if (!lista) throw new Error(`el servidor devolvió un formato que no se reconoce (${JSON.stringify(datos).slice(0, 120)}).`);
+
+  const diccionario = new Map();
+  for (const categoria of lista) {
+    const nombre = primerTexto(categoria?.name, categoria?.nombre);
+    if (!nombre) continue;
+    const entrada = { nombre, grupo: textoONulo(categoria.super) ?? "" };
+    for (const clave of [categoria.code, categoria.id]) {
+      const texto = textoONulo(clave);
+      if (texto) diccionario.set(texto.toLowerCase(), entrada);
+    }
+  }
+  return diccionario;
+}
+
+// Arma el directorio: pide las tiendas (con Bearer) y el diccionario de categorías (público) en paralelo. Si el
+// diccionario falla, las tiendas se muestran igual, sin traducir, y se devuelve el motivo en `errorDiccionario`.
+async function cargarDirectorioAdonis(token, signal) {
+  const [crudas, categorias] = await Promise.all([
+    cargarTiendasAdonis(token, signal),
+    cargarCategoriasAdonis(signal).then(
+      (diccionario) => ({ diccionario, error: "" }),
+      (err) => {
+        if (signal.aborted) throw err;
+        console.error(err);
+        return { diccionario: new Map(), error: err.message || "no se pudo leer el diccionario de categorías." };
+      }
+    ),
+  ]);
+
   const vistos = new Set();
-  return crudas
-    .map(mapearTienda)
+  const lista = crudas
+    .map((t) => mapearTienda(t, categorias.diccionario))
     .filter((t) => t !== null && !vistos.has(String(t.id)) && vistos.add(String(t.id)))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
+  return { lista, errorDiccionario: categorias.error };
 }
 
 // Menú de acciones por fila: desplegable anclado al botón (mismo patrón sin overlay/modal que
@@ -204,6 +296,7 @@ export default function MasterTiendasPage() {
   const [tiendas, setTiendas] = useState([]);
   const [cargandoTiendas, setCargandoTiendas] = useState(true);
   const [errorTiendas, setErrorTiendas] = useState("");
+  const [errorCategorias, setErrorCategorias] = useState("");
   const [recargaTiendas, setRecargaTiendas] = useState(0);
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstatus, setFiltroEstatus] = useState("TODOS");
@@ -215,11 +308,12 @@ export default function MasterTiendasPage() {
   useEffect(() => {
     if (!isAdmin || !tokenAdmin) return undefined;
     const controller = new AbortController();
-    cargarTiendasAdonis(tokenAdmin, controller.signal)
-      .then((lista) => {
+    cargarDirectorioAdonis(tokenAdmin, controller.signal)
+      .then(({ lista, errorDiccionario }) => {
         if (controller.signal.aborted) return;
         setTiendas(lista);
         setErrorTiendas("");
+        setErrorCategorias(errorDiccionario);
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
@@ -234,6 +328,7 @@ export default function MasterTiendasPage() {
 
   const handleReintentarTiendas = () => {
     setErrorTiendas("");
+    setErrorCategorias("");
     setCargandoTiendas(true);
     setRecargaTiendas((n) => n + 1);
   };
@@ -298,14 +393,22 @@ export default function MasterTiendasPage() {
   const sinTokenAdmin = !tokenAdmin;
   const mostrandoCarga = cargandoTiendas && !sinTokenAdmin;
   const avisoTiendas = sinTokenAdmin
-    ? "no hay un token de administrador en la sesión; cierra sesión y vuelve a iniciarla."
-    : errorTiendas;
+    ? "No se pudo cargar el directorio de tiendas: no hay un token de administrador en la sesión; cierra sesión y vuelve a iniciarla."
+    : errorTiendas
+      ? `No se pudo cargar el directorio de tiendas: ${errorTiendas}`
+      : errorCategorias
+        ? `Las tiendas cargaron, pero no se pudieron traducir sus categorías (se muestran como «${SIN_CLASIFICAR}» y la Ficha Gastronómica no se activa sola): ${errorCategorias}`
+        : "";
+
+  // Opciones del filtro de nichos: las categorías reales de las tiendas cargadas (más el nicho puesto a mano o «Sin clasificar»)
+  const opcionesNicho = [...new Set(tiendas.flatMap((t) => (t.nicho === t.categorias.join(", ") ? t.categorias : [...t.categorias, t.nicho])))]
+    .sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
 
   const tiendasFiltradas = tiendas.filter((t) => {
     const q = busqueda.trim().toLowerCase();
     const coincideTexto = !q || t.nombre.toLowerCase().includes(q) || t.representante.toLowerCase().includes(q) || String(t.id).includes(q);
     const coincideEstatus = filtroEstatus === "TODOS" || t.estatus === filtroEstatus;
-    const coincideNicho = filtroNicho === "TODOS" || t.nicho === filtroNicho;
+    const coincideNicho = filtroNicho === "TODOS" || t.nicho === filtroNicho || t.categorias.includes(filtroNicho);
     return coincideTexto && coincideEstatus && coincideNicho;
   });
 
@@ -326,11 +429,11 @@ export default function MasterTiendasPage() {
         </header>
 
         <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 flex-1 w-full space-y-4">
-          {avisoTiendas ? (
+          {avisoTiendas && (
             <div role="alert" className="flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800 text-left">
               <span className="flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                No se pudo cargar el directorio de tiendas: {avisoTiendas}
+                {avisoTiendas}
               </span>
               {!sinTokenAdmin && (
                 <button
@@ -341,11 +444,6 @@ export default function MasterTiendasPage() {
                   <RefreshCw className="w-3.5 h-3.5" /> Reintentar
                 </button>
               )}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800 text-left">
-              Directorio cargado desde Adonis (GET /store). Lo que el servidor no entrega aparece como «{NO_REGISTRADO}» o
-              «{SIN_CLASIFICAR}». Editar y Suspender solo cambian esta vista: todavía no se guardan en el servidor.
             </div>
           )}
 
@@ -375,7 +473,7 @@ export default function MasterTiendasPage() {
               className="px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:border-[#FE6712]"
             >
               <option value="TODOS">Todos los nichos</option>
-              {NICHOS_FILTRO.map((n) => (
+              {opcionesNicho.map((n) => (
                 <option key={n} value={n}>{n}</option>
               ))}
             </select>
@@ -495,7 +593,7 @@ export default function MasterTiendasPage() {
                                   <Check className="w-3.5 h-3.5" /> Guardar
                                 </button>
                               </div>
-                              {t.nicho === "Gastronomía & Heladería" && <ConfiguracionGastronomica token={user?.token} storeId={t.id} />}
+                              {esGastronomia(t) && <ConfiguracionGastronomica token={user?.token} storeId={t.id} />}
                             </td>
                           </tr>
                         )}
