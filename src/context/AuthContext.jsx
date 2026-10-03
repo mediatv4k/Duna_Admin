@@ -8,6 +8,12 @@ const AuthContext = createContext({});
 const ADONIS_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://dev.carjos-marketplace.cloud';
 const ADONIS_API_KEY = process.env.NEXT_PUBLIC_SERVER_API_KEY || 'bf8f1b64-6342-48c5-af05-501e4c15a6cb';
 
+// Rol de quien no trae un rol administrativo. Antes, quien no traía `rol` quedaba como 'superadmin': cualquier
+// cuenta con credenciales válidas pasaba por administrador. Ahora el rol sale de `roles` en la respuesta de
+// GET /user/login (texto, p. ej. "ADMINISTRATOR" para el Administrador General; payload real aportado por el
+// equipo el 2026-10-03) y, si no viene, queda el rol raso: nunca se asume administrador por omisión.
+const ROL_POR_DEFECTO = 'vendedor';
+
 function textoErrorAdonis(mensaje, resStatus) {
   if (typeof mensaje === 'object' && mensaje !== null) return JSON.stringify(mensaje);
   return mensaje || `Adonis respondió HTTP ${resStatus}`;
@@ -27,9 +33,12 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     try {
       const saved = typeof window !== 'undefined' ? localStorage.getItem('duna_user') : null;
-      if (saved) {
+      const guardado = saved ? JSON.parse(saved) : null;
+      if (guardado && typeof guardado === 'object') {
+        // El rol se vuelve a derivar de `roles`, que el perfil conserva tal cual lo entregó Adonis: las sesiones
+        // guardadas antes de este cambio llevan rol 'superadmin' por el fallback antiguo, fuera quien fuera su dueño.
         // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap desde localStorage, solo disponible post-montaje en cliente
-        setUser(JSON.parse(saved));
+        setUser({ ...guardado, rol: guardado.roles || ROL_POR_DEFECTO });
       }
     } catch (e) {}
     setLoading(false);
@@ -68,10 +77,9 @@ export function AuthProvider({ children }) {
       ...datosUsuario,
       token,
       nombre: datosUsuario.nombre || datosUsuario.name || limpio,
-      // Ningún campo de rol confirmado en la respuesta real de Adonis para un usuario del ERP interno
-      // (mismo caso ya documentado para ud_store del Portal de Comercios): se asume admin si no viene
-      // ninguno, para no bloquear el acceso de quien de hecho tiene credenciales válidas.
-      rol: datosUsuario.rol || 'superadmin',
+      // El rol viene en `roles` (texto, p. ej. "ADMINISTRATOR"); sin él, el rol raso (ver ROL_POR_DEFECTO).
+      // El token no se toca: sigue viajando en este mismo perfil, que se guarda en duna_user (aparte de iac_store).
+      rol: datosUsuario.roles || ROL_POR_DEFECTO,
       empresa_id: datosUsuario.empresa_id || 'cabimas_matriz',
     };
   };
@@ -108,8 +116,9 @@ export function AuthProvider({ children }) {
       logout,
       loading,
       empresaId: user?.empresa_id || 'cabimas_matriz',
-      rol: user?.rol || 'superadmin',
-      isAdmin: user?.rol === 'superadmin' || user?.rol === 'admin'
+      rol: user?.rol || ROL_POR_DEFECTO,
+      // Comparación exacta con el valor de Adonis ("ADMINISTRATOR"); 'superadmin' se conserva por compatibilidad
+      isAdmin: user?.rol === 'ADMINISTRATOR' || user?.rol === 'superadmin'
     }}>
       {children}
     </AuthContext.Provider>

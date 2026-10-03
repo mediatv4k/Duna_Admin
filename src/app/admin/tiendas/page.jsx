@@ -4,19 +4,29 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Lock, ArrowLeft, Search, MoreVertical, LogIn, Power, Pencil, Check, X,
+  AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import SidebarTienda from "@/components/comercios/SidebarTienda";
 import ConfiguracionGastronomica from "@/components/comercios/ConfiguracionGastronomica";
 
 // ==============================================================================
-// MASTER DE TIENDAS — DATOS DE EJEMPLO, SIN CONECTAR A ADONIS
+// MASTER DE TIENDAS — DIRECTORIO CONECTADO A ADONIS (GET /store)
 // ==============================================================================
-// No existe hoy ningún endpoint de Adonis para listar TODAS las tiendas con estatus/representante/
-// contacto administrativo (GET /store solo devuelve id+nombre y requiere Bearer, ya usado en
-// comercios/productos/page.jsx para el selector Master — no expone estos campos). Este directorio se
-// construye completo y funcional contra un set de datos de ejemplo (MOCK_TIENDAS abajo), con esta misma
-// función como punto de conexión futura. Mismo patrón que /reportes y /comercios/cierre-caja.
+// El listado sale de GET /store con la apiKey y el Bearer del administrador (useAuth().user.token): la misma
+// llamada que ya hacen inventario/page.jsx (cargarTiendasAdonis) y comercios/productos/page.jsx
+// (cargarTiendasComercio), duplicada aquí a propósito para no acoplar este módulo al portal de comercios.
+// Lo que el servidor no entregue se rellena con valores por defecto, para que la tabla nunca reciba undefined.
+//
+// Verificado el 2026-10-03 contra el backend real SIN sesión válida: GET /store responde 401
+// {"errors":[{"message":"E_INVALID_API_TOKEN: Invalid API token"}]}, con o sin apiKey. La forma de la respuesta
+// CON sesión válida no está confirmada (nadie ha podido leerla), así que el mapeo es defensivo. Lo único
+// confirmado de un comercio viene de data.store en GET /store/:id/payment/info: name (a veces null), manager
+// (a veces vacío), phone (con prefijo 58), status (OPEN, CLOSED o INACTIVE) y categories (ids, no nombres).
+// No existe ningún campo de nicho: toda tienda llega como «Sin clasificar» hasta que el administrador lo
+// elija aquí, y esa elección vive solo en esta vista (no se guarda en ningún lado).
+//
+// Editar, Suspender y «Entrar como comercio» siguen siendo locales: no escriben en el servidor.
 //
 // La guarda de acceso usa useAuth()/isAdmin (AuthContext, login real en /login) — NO
 // localStorage.getItem("iac"), que no existe en ningún punto de este proyecto (el localStorage real del
@@ -35,17 +45,99 @@ const NICHOS_FILTRO = [
   "Moda, Calzado & Perfumería",
 ];
 
-const MOCK_TIENDAS = [
-  { id: 47, nombre: "Farma D'una Virtual", nicho: "Farmacia, Salud & Cuidado Personal", representante: "Carlos Pérez", contacto: "0414-1234567", estatus: "ACTIVO" },
-  { id: 39, nombre: "Papaíto Helado", nicho: "Gastronomía & Heladería", representante: "Ana Gómez", contacto: "0412-9876543", estatus: "ACTIVO" },
-  { id: 12, nombre: "Bodegón El Ahorro", nicho: "Supermercado, Bodegones & Licores", representante: "Luis Rodríguez", contacto: "0424-5551234", estatus: "SUSPENDIDO" },
-  { id: 8, nombre: "TecnoHogar Cabimas", nicho: "Tecnología, Hogar & Ferretería", representante: "María Fernández", contacto: "0426-7778899", estatus: "ACTIVO" },
-  { id: 21, nombre: "Boutique Elegance", nicho: "Moda, Calzado & Perfumería", representante: "Sofía Ramírez", contacto: "0414-3332211", estatus: "ACTIVO" },
-  { id: 5, nombre: "Pizzería El Peluche", nicho: "Gastronomía & Heladería", representante: "Jorge Martínez", contacto: "0412-4445566", estatus: "SUSPENDIDO" },
-];
+const ADONIS_BASE = "https://dev.carjos-marketplace.cloud";
+// Mismos encabezados que inventario/page.jsx. La apiKey admite el override de entorno que ya usa AuthContext,
+// que es quien emite el token: si algún día difieren, el token no valdría con otra clave.
+const ADONIS_HEADERS = {
+  apiKey: process.env.NEXT_PUBLIC_SERVER_API_KEY || "bf8f1b64-6342-48c5-af05-501e4c15a6cb",
+  "Content-Type": "application/json",
+};
 
-function cargarTiendasDemo() {
-  return MOCK_TIENDAS;
+const NO_REGISTRADO = "No registrado";
+const SIN_CLASIFICAR = "Sin clasificar";
+// Tope de páginas de GET /store: evita un bucle desbocado si el servidor devolviera un last_page absurdo
+const MAX_PAGINAS_TIENDAS = 100;
+// status real de un comercio: OPEN, CLOSED (abierto o cerrado ahora, pero en el sistema) o INACTIVE. La tabla
+// solo distingue Activo de Suspendido: únicamente lo que el servidor marca como dado de baja se muestra
+// Suspendido. Si CLOSED debiera contar como suspendido, basta con agregarlo a esta lista.
+const ESTATUS_SUSPENDIDOS = ["INACTIVE", "INACTIVO", "SUSPENDED", "SUSPENDIDO"];
+
+// Texto limpio de un valor del servidor, o null si no es texto/número o viene vacío
+const textoONulo = (valor) => {
+  if (typeof valor !== "string" && typeof valor !== "number") return null;
+  return String(valor).trim() || null;
+};
+// El primero de los candidatos que traiga contenido (el servidor a veces manda "" o null en el campo principal)
+const primerTexto = (...candidatos) => {
+  for (const candidato of candidatos) {
+    const texto = textoONulo(candidato);
+    if (texto) return texto;
+  }
+  return null;
+};
+
+// Convierte un comercio de Adonis al formato de la tabla. Devuelve null si no tiene id (no se puede operar
+// sobre él). Todos los textos salen como string: la búsqueda y el filtro llaman toLowerCase() sobre ellos.
+function mapearTienda(t) {
+  if (t === null || typeof t !== "object") return null;
+  const id = t.id ?? t._id;
+  if (id === undefined || id === null || id === "") return null;
+  return {
+    id,
+    nombre: primerTexto(t.name, t.nombre) ?? `Tienda #${id}`,
+    nicho: primerTexto(t.nicho, t.niche) ?? SIN_CLASIFICAR,
+    representante: primerTexto(t.manager, t.representante, t.responsable) ?? NO_REGISTRADO,
+    contacto: primerTexto(t.phone, t.telefono, t.contacto) ?? NO_REGISTRADO,
+    estatus: ESTATUS_SUSPENDIDOS.includes(String(t.status ?? "").trim().toUpperCase()) ? "SUSPENDIDO" : "ACTIVO",
+  };
+}
+
+// GET /store con la apiKey y el Bearer del administrador. La forma exacta de la respuesta no está confirmada,
+// así que se busca el arreglo en las envolturas habituales (las mismas que ya prueban inventario y el portal)
+// y se sigue la paginación si el servidor la anuncia. Si no hay ningún arreglo, es un error: un directorio
+// vacío por no entender la respuesta engañaría más que un aviso.
+async function cargarTiendasAdonis(token, signal) {
+  const pedirPagina = async (pagina) => {
+    const res = await fetch(`${ADONIS_BASE}/store${pagina > 1 ? `?page=${pagina}` : ""}`, {
+      headers: { ...ADONIS_HEADERS, Authorization: `Bearer ${token}` },
+      signal,
+    });
+    let datos = null;
+    try {
+      datos = await res.json();
+    } catch (e) {
+      datos = null;
+    }
+    if (!res.ok || !datos || (datos.code !== undefined && datos.code !== 1)) {
+      // Adonis responde los errores de sesión como {"errors":[{"message"}]} y los demás como {"message"}
+      const aTexto = (m) => (m !== null && typeof m === "object" ? JSON.stringify(m) : m);
+      const detalle = aTexto(datos?.message) || aTexto(datos?.errors?.[0]?.message);
+      const sesion = res.status === 401 || res.status === 403 ? " Tu sesión de administrador venció o no tiene permiso: cierra sesión y vuelve a entrar." : "";
+      const base = String(detalle || `Adonis respondió HTTP ${res.status} al listar las tiendas`).replace(/[.\s]+$/, "");
+      throw new Error(`${base}.${sesion}`);
+    }
+    return datos;
+  };
+  const extraerLista = (datos) => {
+    const lista = [datos, datos.data, datos.data?.stores, datos.data?.stores?.data, datos.data?.data, datos.stores, datos.data?.rows].find(Array.isArray);
+    if (!lista) throw new Error(`el servidor devolvió un formato que no se reconoce (${JSON.stringify(datos).slice(0, 120)}).`);
+    return lista;
+  };
+  const ultimaPagina = (datos) =>
+    Number(datos.meta?.last_page ?? datos.data?.meta?.last_page ?? datos.data?.stores?.meta?.last_page ?? datos.data?.last_page ?? datos.last_page) || 1;
+
+  const primera = await pedirPagina(1);
+  let crudas = extraerLista(primera);
+  const paginas = Math.min(ultimaPagina(primera), MAX_PAGINAS_TIENDAS);
+  for (let p = 2; p <= paginas; p++) {
+    crudas = crudas.concat(extraerLista(await pedirPagina(p)));
+  }
+
+  const vistos = new Set();
+  return crudas
+    .map(mapearTienda)
+    .filter((t) => t !== null && !vistos.has(String(t.id)) && vistos.add(String(t.id)))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
 }
 
 // Menú de acciones por fila: desplegable anclado al botón (mismo patrón sin overlay/modal que
@@ -107,13 +199,44 @@ function MenuAcciones({ onImpersonar, onCambiarEstatus, onEditar, estatus }) {
 export default function MasterTiendasPage() {
   const router = useRouter();
   const { isAdmin, loading: cargandoAuth, logout, user } = useAuth();
+  const tokenAdmin = user?.token;
 
-  const [tiendas, setTiendas] = useState(() => cargarTiendasDemo());
+  const [tiendas, setTiendas] = useState([]);
+  const [cargandoTiendas, setCargandoTiendas] = useState(true);
+  const [errorTiendas, setErrorTiendas] = useState("");
+  const [recargaTiendas, setRecargaTiendas] = useState(0);
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstatus, setFiltroEstatus] = useState("TODOS");
   const [filtroNicho, setFiltroNicho] = useState("TODOS");
   const [editandoId, setEditandoId] = useState(null);
   const [formEdicion, setFormEdicion] = useState({ nombre: "", nicho: "General", representante: "", contacto: "" });
+
+  // Solo un administrador con token pide el directorio; sin token (sesión antigua) o sin rol no sale ninguna petición
+  useEffect(() => {
+    if (!isAdmin || !tokenAdmin) return undefined;
+    const controller = new AbortController();
+    cargarTiendasAdonis(tokenAdmin, controller.signal)
+      .then((lista) => {
+        if (controller.signal.aborted) return;
+        setTiendas(lista);
+        setErrorTiendas("");
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        console.error(err);
+        setErrorTiendas(err.message || "No se pudieron listar las tiendas.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCargandoTiendas(false);
+      });
+    return () => controller.abort();
+  }, [isAdmin, tokenAdmin, recargaTiendas]);
+
+  const handleReintentarTiendas = () => {
+    setErrorTiendas("");
+    setCargandoTiendas(true);
+    setRecargaTiendas((n) => n + 1);
+  };
 
   const handleCerrarSesionErp = () => {
     logout();
@@ -171,6 +294,13 @@ export default function MasterTiendasPage() {
     );
   }
 
+  // Sin token (sesión antigua de duna_user) no hay nada que pedir: no se queda cargando para siempre, avisa
+  const sinTokenAdmin = !tokenAdmin;
+  const mostrandoCarga = cargandoTiendas && !sinTokenAdmin;
+  const avisoTiendas = sinTokenAdmin
+    ? "no hay un token de administrador en la sesión; cierra sesión y vuelve a iniciarla."
+    : errorTiendas;
+
   const tiendasFiltradas = tiendas.filter((t) => {
     const q = busqueda.trim().toLowerCase();
     const coincideTexto = !q || t.nombre.toLowerCase().includes(q) || t.representante.toLowerCase().includes(q) || String(t.id).includes(q);
@@ -189,7 +319,6 @@ export default function MasterTiendasPage() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-black text-slate-900">Master de Tiendas</span>
-                <span className="text-[11px] bg-orange-50 text-[#FE6712] px-2.5 py-0.5 rounded-full font-bold border border-orange-200">DEMO</span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium">Directorio global de comercios</p>
             </div>
@@ -197,11 +326,28 @@ export default function MasterTiendasPage() {
         </header>
 
         <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 flex-1 w-full space-y-4">
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800 text-left">
-            Datos de Ejemplo — no existe hoy un endpoint de Adonis que liste todas las tiendas con estatus,
-            representante y contacto. Sustituir cargarTiendasDemo (arriba en este archivo) por la llamada
-            real cuando el backend la entregue.
-          </div>
+          {avisoTiendas ? (
+            <div role="alert" className="flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800 text-left">
+              <span className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                No se pudo cargar el directorio de tiendas: {avisoTiendas}
+              </span>
+              {!sinTokenAdmin && (
+                <button
+                  type="button"
+                  onClick={handleReintentarTiendas}
+                  className="shrink-0 px-3 py-1.5 bg-white border border-amber-200 text-amber-800 rounded-lg text-[11px] font-bold hover:bg-amber-100 transition flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Reintentar
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800 text-left">
+              Directorio cargado desde Adonis (GET /store). Lo que el servidor no entrega aparece como «{NO_REGISTRADO}» o
+              «{SIN_CLASIFICAR}». Editar y Suspender solo cambian esta vista: todavía no se guardan en el servidor.
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-3 text-left">
             <div className="relative flex-1 min-w-[220px]">
@@ -249,7 +395,15 @@ export default function MasterTiendasPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {tiendasFiltradas.length === 0 ? (
+                {mostrandoCarga ? (
+                  <tr>
+                    <td colSpan="7" className="p-10 text-center text-xs">
+                      <span role="status" className="inline-flex items-center gap-2 font-bold text-slate-500">
+                        <Loader2 className="w-4 h-4 text-[#FE6712] animate-spin" /> Cargando tiendas...
+                      </span>
+                    </td>
+                  </tr>
+                ) : tiendasFiltradas.length === 0 ? (
                   <tr>
                     <td colSpan="7" className="p-10 text-center text-xs text-slate-400">No se encontraron comercios que coincidan.</td>
                   </tr>
@@ -302,6 +456,7 @@ export default function MasterTiendasPage() {
                                     onChange={(e) => setFormEdicion((p) => ({ ...p, nicho: e.target.value }))}
                                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
                                   >
+                                    {!NICHOS_FILTRO.includes(formEdicion.nicho) && <option value={formEdicion.nicho}>{formEdicion.nicho}</option>}
                                     {NICHOS_FILTRO.map((n) => <option key={n} value={n}>{n}</option>)}
                                   </select>
                                 </div>
