@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useCurrency } from "@/context/CurrencyContext";
 import { useBusinessProfile } from "@/context/BusinessProfileContext";
+import { useAuth } from "@/context/AuthContext";
 import { obtenerTokenComercio, obtenerUsuarioComercio, cerrarSesionComercio, subirExcelBatchComercio, normalizarErroresBatch, esVendedorComercio } from "@/lib/commerceServices";
 import MenuComercio from "@/components/comercios/MenuComercio";
 import SidebarTienda from "@/components/comercios/SidebarTienda";
@@ -29,6 +30,11 @@ const IMAGEN_DEFECTO = "https://images.unsplash.com/photo-1546069901-ba9599a7e63
 
 const ADONIS_BASE = "https://dev.carjos-marketplace.cloud";
 const ADONIS_API_KEY = process.env.NEXT_PUBLIC_SERVER_API_KEY || "bf8f1b64-6342-48c5-af05-501e4c15a6cb";
+
+// Prefijo del token de relleno que "Entrar como comercio" (Master de Tiendas, src/app/admin/tiendas/page.jsx) guarda
+// en iac_store al impersonar una tienda: `impersonado-admin-<id>`. No es un token de Adonis: las rutas que validan
+// sesión (GET /store y la descarga del Excel) lo rechazan con 401 E_INVALID_API_TOKEN (verificado 2026-10-03).
+const PREFIJO_TOKEN_IMPERSONADO = "impersonado-admin-";
 
 function encabezadosComercio(token) {
   return {
@@ -1139,6 +1145,8 @@ export default function ComerciosProductosPage() {
   const { modoMoneda, tasaBcv } = useCurrency();
   const { perfil } = useBusinessProfile();
   const esPerfilSimple = perfil === "SIMPLE";
+  // Sesión del ERP (duna_user): su token solo se usa cuando un Administrador General entró con "Entrar como comercio"
+  const { user: usuarioErp, isAdmin: esAdminErp } = useAuth();
 
   // Guardia de sesión del portal de comercios: exige un token válido en localStorage ("iac_store")
   const [token, setToken] = useState(null);
@@ -1156,6 +1164,13 @@ export default function ComerciosProductosPage() {
     setComercio(obtenerUsuarioComercio());
     setVerificandoSesion(false);
   }, [router]);
+
+  // Token de las LECTURAS que validan sesión (lista de tiendas y descarga del Excel). Con una sesión real del portal
+  // es el de siempre (iac_store). Si un Administrador General entró con "Entrar como comercio", iac_store trae el
+  // token de relleno y Adonis responde 401: solo en ese caso, y solo si la sesión del ERP es de administrador y trae
+  // token, se usa el del administrador (duna_user.token). Las escrituras no cambian: siguen con `token`.
+  const esTokenImpersonado = typeof token === "string" && token.startsWith(PREFIJO_TOKEN_IMPERSONADO);
+  const tokenLectura = esTokenImpersonado && esAdminErp && usuarioErp?.token ? usuarioErp.token : token;
 
   // Modo Master: el selector de la cabecera cambia la tienda activa sin cerrar sesión ni tocar localStorage.
   // Por defecto se usa la tienda de la sesión; "storeId" (la activa) alimenta el resto del componente.
@@ -1240,11 +1255,11 @@ export default function ComerciosProductosPage() {
     return () => controller.abort();
   }, [token, storeId, recarga]);
 
-  // Lista de tiendas para el selector Master (GET /store, solo apiKey); se pide una vez al abrir el portal
+  // Lista de tiendas para el selector Master (GET /store, apiKey + Bearer de lectura); se pide una vez al abrir el portal
   useEffect(() => {
-    if (!token) return undefined;
+    if (!tokenLectura) return undefined;
     const controller = new AbortController();
-    cargarTiendasComercio(token, controller.signal)
+    cargarTiendasComercio(tokenLectura, controller.signal)
       .then((lista) => {
         if (controller.signal.aborted) return;
         setTiendas(lista);
@@ -1259,7 +1274,7 @@ export default function ComerciosProductosPage() {
         if (!controller.signal.aborted) setCargandoTiendas(false);
       });
     return () => controller.abort();
-  }, [token, recargaTiendas]);
+  }, [tokenLectura, recargaTiendas]);
 
   const handleReintentarTiendas = () => {
     setErrorTiendas("");
@@ -1427,7 +1442,7 @@ export default function ComerciosProductosPage() {
     try {
       const res = await fetch(`${ADONIS_BASE}/store/${storeId}/products/download/v2`, {
         method: "GET",
-        headers: { apiKey: ADONIS_API_KEY, Authorization: `Bearer ${token}` },
+        headers: { apiKey: ADONIS_API_KEY, Authorization: `Bearer ${tokenLectura}` },
       });
       if (!res.ok) {
         // Adonis responde JSON en error y binario (xlsx) en éxito

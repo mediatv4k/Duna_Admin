@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Lock, ArrowLeft, Search, MoreVertical, LogIn, Power, Pencil, Check, X,
-  AlertTriangle, RefreshCw,
+  AlertTriangle, RefreshCw, Plus,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import SidebarTienda from "@/components/comercios/SidebarTienda";
 import ConfiguracionGastronomica from "@/components/comercios/ConfiguracionGastronomica";
+import FormularioNuevaTienda, { ID_SECCION_NUEVA_TIENDA } from "./FormularioNuevaTienda";
 
 // ==============================================================================
 // MASTER DE TIENDAS — DIRECTORIO CONECTADO A ADONIS (GET /store)
@@ -34,6 +35,10 @@ import ConfiguracionGastronomica from "@/components/comercios/ConfiguracionGastr
 // «Comida»: sin él, entre las 23 categorías reales solo «Heladerías» activaría la ficha).
 //
 // Editar, Suspender y «Entrar como comercio» siguen siendo locales: no escriben en el servidor.
+//
+// Nueva Tienda: el botón de la cabecera abre FormularioNuevaTienda (sección en línea, sin modal) con las categorías
+// de este mismo diccionario. La creación es SIMULADA: no escribe en el servidor y lo «creado» solo vive en
+// `tiendasCreadas` (estado de esta página), fuera de la tabla del directorio. Detalles en el encabezado del formulario.
 //
 // La guarda de acceso usa useAuth()/isAdmin (AuthContext, login real en /login) — NO
 // localStorage.getItem("iac"), que no existe en ningún punto de este proyecto (el localStorage real del
@@ -120,6 +125,8 @@ function mapearTienda(t, diccionario) {
   const nicho = primerTexto(t.nicho, t.niche) ?? (nombres.length ? nombres.join(", ") : SIN_CLASIFICAR);
   return {
     id,
+    // `code` (slug) de la tienda, en minúsculas: el formulario de Nueva Tienda lo usa para avisar de un código repetido
+    codigo: (textoONulo(t.code) ?? "").toLowerCase(),
     nombre: primerTexto(t.name, t.nombre) ?? `Tienda #${id}`,
     nicho,
     nichoServidor: nicho,
@@ -200,7 +207,8 @@ async function cargarCategoriasAdonis(signal) {
   for (const categoria of lista) {
     const nombre = primerTexto(categoria?.name, categoria?.nombre);
     if (!nombre) continue;
-    const entrada = { nombre, grupo: textoONulo(categoria.super) ?? "" };
+    // id y codigo se conservan para el formulario de Nueva Tienda, que elige categorías y envía su código
+    const entrada = { nombre, grupo: textoONulo(categoria.super) ?? "", id: textoONulo(categoria.id), codigo: textoONulo(categoria.code) };
     for (const clave of [categoria.code, categoria.id]) {
       const texto = textoONulo(clave);
       if (texto) diccionario.set(texto.toLowerCase(), entrada);
@@ -229,7 +237,8 @@ async function cargarDirectorioAdonis(token, signal) {
     .map((t) => mapearTienda(t, categorias.diccionario))
     .filter((t) => t !== null && !vistos.has(String(t.id)) && vistos.add(String(t.id)))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
-  return { lista, errorDiccionario: categorias.error };
+  // categoriasUnicas: cada categoría una sola vez (el diccionario la indexa por `code` y por `id`, con la misma entrada)
+  return { lista, errorDiccionario: categorias.error, categoriasUnicas: [...new Set(categorias.diccionario.values())] };
 }
 
 // Menú de acciones por fila: desplegable anclado al botón (mismo patrón sin overlay/modal que
@@ -303,15 +312,20 @@ export default function MasterTiendasPage() {
   const [filtroNicho, setFiltroNicho] = useState("TODOS");
   const [editandoId, setEditandoId] = useState(null);
   const [formEdicion, setFormEdicion] = useState({ nombre: "", nicho: "General", representante: "", contacto: "" });
+  // Nueva Tienda: sección abierta o no, categorías del diccionario para elegir y tiendas «creadas» (simuladas) de esta sesión
+  const [creando, setCreando] = useState(false);
+  const [categoriasDisponibles, setCategoriasDisponibles] = useState([]);
+  const [tiendasCreadas, setTiendasCreadas] = useState([]);
 
   // Solo un administrador con token pide el directorio; sin token (sesión antigua) o sin rol no sale ninguna petición
   useEffect(() => {
     if (!isAdmin || !tokenAdmin) return undefined;
     const controller = new AbortController();
     cargarDirectorioAdonis(tokenAdmin, controller.signal)
-      .then(({ lista, errorDiccionario }) => {
+      .then(({ lista, errorDiccionario, categoriasUnicas }) => {
         if (controller.signal.aborted) return;
         setTiendas(lista);
+        setCategoriasDisponibles(categoriasUnicas);
         setErrorTiendas("");
         setErrorCategorias(errorDiccionario);
       })
@@ -360,6 +374,13 @@ export default function MasterTiendasPage() {
   const handleGuardarEdicion = (id) => {
     setTiendas((prev) => prev.map((t) => (t.id === id ? { ...t, ...formEdicion } : t)));
     setEditandoId(null);
+  };
+
+  // Creación SIMULADA: la tienda se queda en el estado de esta página (la más reciente primero) con un id local
+  // «SIM-n»; no entra en `tiendas` porque esa tabla es la del servidor. Al conectar el backend, esto se sustituye por
+  // la recarga del directorio.
+  const handleCrearTienda = (registro) => {
+    setTiendasCreadas((prev) => [{ ...registro, id: `SIM-${prev.length + 1}` }, ...prev]);
   };
 
   if (cargandoAuth) {
@@ -412,6 +433,9 @@ export default function MasterTiendasPage() {
     return coincideTexto && coincideEstatus && coincideNicho;
   });
 
+  // Códigos (slug) ya registrados en el directorio: el formulario de Nueva Tienda avisa si se repite uno
+  const codigosExistentes = tiendas.map((t) => t.codigo).filter(Boolean);
+
   return (
     <div className="flex min-h-screen bg-white">
       <SidebarTienda onCerrarSesion={handleCerrarSesionErp} />
@@ -425,6 +449,15 @@ export default function MasterTiendasPage() {
               </div>
               <p className="text-[11px] text-slate-400 font-medium">Directorio global de comercios</p>
             </div>
+            <button
+              type="button"
+              onClick={() => setCreando(true)}
+              aria-expanded={creando}
+              aria-controls={creando ? ID_SECCION_NUEVA_TIENDA : undefined}
+              className="ml-auto px-4 py-2 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+            >
+              <Plus className="w-4 h-4" /> Nueva Tienda
+            </button>
           </div>
         </header>
 
@@ -445,6 +478,19 @@ export default function MasterTiendasPage() {
                 </button>
               )}
             </div>
+          )}
+
+          {creando && (
+            <FormularioNuevaTienda
+              categorias={categoriasDisponibles}
+              cargandoCategorias={mostrandoCarga}
+              errorCategorias={errorCategorias || errorTiendas}
+              onReintentarCategorias={handleReintentarTiendas}
+              codigosExistentes={codigosExistentes}
+              tiendasCreadas={tiendasCreadas}
+              onCrear={handleCrearTienda}
+              onCerrar={() => setCreando(false)}
+            />
           )}
 
           <div className="flex flex-wrap items-center gap-3 text-left">
