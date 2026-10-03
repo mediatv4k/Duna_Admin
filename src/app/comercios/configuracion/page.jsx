@@ -33,6 +33,12 @@ const NICHOS_COMERCIO = [
   "Moda, Calzado & Perfumería",
 ];
 
+// D'una es única y exclusivamente un intermediario entre el cliente y el comercio aliado: NO emite factura fiscal (la
+// emite solo el aliado). Por eso el selector «Tipo de Facturación» no ofrece factura fiscal ni la opción que combinaba
+// ambos documentos: solo «Nota de Entrega» y «Comanda». El valor del campo es el propio texto de la opción y el estado
+// inicial sale de esta misma lista, para que nunca arranque con una opción que no existe.
+const TIPOS_FACTURACION = ["Nota de Entrega", "Comanda"];
+
 function Campo({ etiqueta, icono: Icono, children }) {
   return (
     <div>
@@ -83,7 +89,7 @@ export default function ConfiguracionComercioPage() {
   // estos campos. No se incluyen en handleGuardar ni en claveConfigLocal.
   const [finanzas, setFinanzas] = useState({
     balanceMinimo: "", creditoMaximo: "", manejaStock: "Si",
-    tipoFacturacion: "Factura Fiscal SENIAT", status: "Activo", visibleMarketplace: true,
+    tipoFacturacion: TIPOS_FACTURACION[0], status: "Activo", visibleMarketplace: true,
   });
   const [delivery, setDelivery] = useState({
     tipoCobro: "Monto Fijo", montoDelivery: "", montoMinimo: "", montoMaximo: "",
@@ -389,9 +395,9 @@ export default function ConfiguracionComercioPage() {
                     onChange={(e) => setFinanzas((prev) => ({ ...prev, tipoFacturacion: e.target.value }))}
                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
                   >
-                    <option value="Factura Fiscal SENIAT">Factura Fiscal SENIAT</option>
-                    <option value="Nota de Entrega">Nota de Entrega</option>
-                    <option value="Ambas">Ambas</option>
+                    {TIPOS_FACTURACION.map((tipo) => (
+                      <option key={tipo} value={tipo}>{tipo}</option>
+                    ))}
                   </select>
                 </div>
                 <div>

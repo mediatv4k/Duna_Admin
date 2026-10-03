@@ -1,10 +1,10 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Loader2, Lock, ArrowLeft, Search, MoreVertical, LogIn, Power, Pencil, Check, X,
-  AlertTriangle, RefreshCw, Plus,
+  Loader2, Lock, ArrowLeft, Search, Power, Check, X, AlertTriangle, RefreshCw, Plus,
+  Boxes, MonitorPlay, BarChart3, Settings, Clock, CreditCard, LogOut, Store,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import SidebarTienda from "@/components/comercios/SidebarTienda";
@@ -29,12 +29,18 @@ import FormularioNuevaTienda, { ID_SECCION_NUEVA_TIENDA } from "./FormularioNuev
 // nombres, sin repetir (los ids que el diccionario no conoce se descartan), o «Sin clasificar» si no queda
 // ninguno. Esa traducción, y cualquier cambio de nicho hecho aquí, viven solo en esta vista.
 //
-// Ficha Gastronómica automática: la fila de edición muestra ConfiguracionGastronomica cuando el nicho que se ve
+// Ficha Gastronómica automática: el entorno del comercio muestra ConfiguracionGastronomica cuando el nicho que se ve
 // menciona algún término de TERMINOS_GASTRONOMIA (sin distinguir mayúsculas) o, mientras el nicho siga siendo el
 // que entregó el servidor, cuando lo menciona el grupo de sus categorías (campo `super` del diccionario, p. ej.
 // «Comida»: sin él, entre las 23 categorías reales solo «Heladerías» activaría la ficha).
 //
-// Editar, Suspender y «Entrar como comercio» siguen siendo locales: no escriben en el servidor.
+// Navegación por comercio: la tabla ya no tiene columna de acciones. El NOMBRE de cada comercio es el enlace para
+// «entrar» en su entorno: siembra la misma sesión de relleno que sembraba «Entrar como comercio» (iac_store/ud_store)
+// y cambia el contexto de esta misma página, sin recargar ni navegar, al entorno de ese comercio. Allí el menú lateral
+// (MenuLateralComercio) lista sus opciones operativas (OPCIONES_COMERCIO) en lugar del menú general, con un botón para
+// volver al directorio. Esas opciones enlazan a las vistas reales del portal, que no se tocaron: dentro de ellas sigue
+// mandando su propio SidebarTienda. En el entorno vive también lo que abría el antiguo menú de acciones: editar la
+// información básica, Suspender/Activar y la Ficha Gastronómica. Eso sigue siendo local: no escribe en el servidor.
 //
 // Nueva Tienda: el botón de la cabecera abre FormularioNuevaTienda (sección en línea, sin modal) con las categorías
 // de este mismo diccionario. La creación es SIMULADA: no escribe en el servidor y lo «creado» solo vive en
@@ -45,8 +51,8 @@ import FormularioNuevaTienda, { ID_SECCION_NUEVA_TIENDA } from "./FormularioNuev
 // ERP interno es "duna_user", ver AuthContext.jsx; "iac_store" es un token distinto, del Portal de
 // Comercios, sin relación con el acceso de administrador aquí).
 //
-// Vocabulario de nichos de comercios/productos/page.jsx (NICHOS): solo alimenta el selector manual de nicho de la
-// fila de edición. El filtro de nichos de la tabla lista las categorías reales de las tiendas cargadas.
+// Vocabulario de nichos de comercios/productos/page.jsx (NICHOS): solo alimenta el selector manual de nicho del
+// entorno del comercio. El filtro de nichos de la tabla lista las categorías reales de las tiendas cargadas.
 const NICHOS_FILTRO = [
   "General",
   "Farmacia, Salud & Cuidado Personal",
@@ -75,6 +81,8 @@ const MAX_PAGINAS_TIENDAS = 100;
 const ESTATUS_SUSPENDIDOS = ["INACTIVE", "INACTIVO", "SUSPENDED", "SUSPENDIDO"];
 // Términos que activan sola la Ficha Gastronómica (se buscan en minúsculas, con los acentos tal cual)
 const TERMINOS_GASTRONOMIA = ["gastronomía", "restaurante", "heladería", "pizza", "comida", "café", "bebida", "yogurt"];
+// Cuánto dura el aviso «Guardado en esta vista» del entorno del comercio
+const AVISO_GUARDADO_MS = 4000;
 
 // Texto limpio de un valor del servidor, o null si no es texto/número o viene vacío
 const textoONulo = (valor) => {
@@ -241,58 +249,196 @@ async function cargarDirectorioAdonis(token, signal) {
   return { lista, errorDiccionario: categorias.error, categoriasUnicas: [...new Set(categorias.diccionario.values())] };
 }
 
-// Menú de acciones por fila: desplegable anclado al botón (mismo patrón sin overlay/modal que
-// SelectorTienda en comercios/productos/page.jsx), nunca un modal ni un overlay a pantalla completa.
-function MenuAcciones({ onImpersonar, onCambiarEstatus, onEditar, estatus }) {
-  const [abierto, setAbierto] = useState(false);
-  const contenedorRef = useRef(null);
+// Opciones operativas del menú lateral cuando se está dentro de un comercio (MenuLateralComercio). Cada una enlaza a
+// la vista real del portal de comercios, que NO se toca: dentro de ellas manda su propio SidebarTienda. «Configuración
+// básica» es comercios/configuracion (dirección, responsable, teléfono, ubicación y nicho de la tienda). Una opción
+// nueva es una entrada más aquí.
+const OPCIONES_COMERCIO = [
+  { id: "kardex", href: "/comercios/productos", etiqueta: "Kardex", icono: Boxes },
+  { id: "mostrador", href: "/comercios/mostrador", etiqueta: "Mostrador", icono: MonitorPlay },
+  { id: "reportes", href: "/reportes", etiqueta: "Reportes", icono: BarChart3 },
+  { id: "configuracion", href: "/comercios/configuracion", etiqueta: "Configuración básica", icono: Settings },
+  { id: "horarios", href: "/comercios/horario", etiqueta: "Horarios", icono: Clock },
+  { id: "metodos-pago", href: "/comercios/metodos-pago", etiqueta: "Métodos de pago", icono: CreditCard },
+];
 
-  useEffect(() => {
-    if (!abierto) return undefined;
-    const alPresionar = (e) => {
-      if (contenedorRef.current && !contenedorRef.current.contains(e.target)) setAbierto(false);
-    };
-    document.addEventListener("mousedown", alPresionar);
-    return () => document.removeEventListener("mousedown", alPresionar);
-  }, [abierto]);
+// Los valores del formulario de información básica salen del comercio tal como está en la tabla
+const formularioDe = (tienda) => ({ nombre: tienda.nombre, nicho: tienda.nicho, representante: tienda.representante, contacto: tienda.contacto });
+
+// Menú lateral del entorno de un comercio: sustituye al menú general (SidebarTienda) mientras se está dentro de uno.
+// Mismo aspecto que SidebarTienda a propósito, para que el cambio de contexto sea fluido; es un componente propio porque
+// SidebarTienda lo comparten Kardex, Mostrador y el resto de vistas internas, que no se tocan. «Master de Tiendas» vuelve
+// al directorio sin recargar la página.
+function MenuLateralComercio({ comercio, onVolver, onCerrarSesion }) {
+  return (
+    <aside className="w-60 shrink-0 h-screen sticky top-0 bg-white border-r border-slate-100 flex flex-col font-sans">
+      <div className="h-16 flex items-center gap-2 px-5 border-b border-slate-100 shrink-0">
+        <div className="w-8 h-8 rounded-xl bg-[#FE6712] text-white flex items-center justify-center font-black text-sm shrink-0">D&apos;</div>
+        <span className="text-sm font-black text-slate-900 truncate">Portal de Aliados</span>
+      </div>
+
+      <div className="px-3 pt-4 space-y-3 shrink-0">
+        <button
+          type="button"
+          onClick={onVolver}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-[#FE6712] transition"
+        >
+          <ArrowLeft className="w-4 h-4 shrink-0" /> Master de Tiendas
+        </button>
+        <div className="px-3 py-2.5 rounded-xl border border-orange-200 bg-orange-50">
+          <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-[#FE6712]">
+            <Store className="w-3 h-3 shrink-0" /> Comercio activo
+          </p>
+          <p className="mt-0.5 text-sm font-black text-slate-900 truncate" title={comercio.nombre}>{comercio.nombre}</p>
+          <p className="text-[10px] text-slate-500">Tienda #{comercio.id}</p>
+        </div>
+      </div>
+
+      <nav aria-label="Opciones del comercio" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {OPCIONES_COMERCIO.map(({ id, href, etiqueta, icono: Icono }) => (
+          <Link
+            key={id}
+            href={href}
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
+          >
+            <Icono className="w-4 h-4 shrink-0" /> {etiqueta}
+          </Link>
+        ))}
+      </nav>
+
+      <div className="p-3 border-t border-slate-100 shrink-0">
+        <button
+          type="button"
+          onClick={onCerrarSesion}
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition"
+        >
+          <LogOut className="w-4 h-4 shrink-0" /> Cerrar sesión
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+// Contenido del entorno de un comercio dentro del Master: lo que antes abrían «Editar Información Básica» (nombre,
+// nicho, representante y contacto), Suspender/Activar y la Ficha Gastronómica, ahora siempre a la vista. Todo local: ni
+// guardar ni cambiar el estatus escriben en el servidor (el aviso lo dice).
+function EntornoComercio({ comercio, formulario, onCambiarFormulario, onGuardar, onDescartar, onCambiarEstatus, avisoGuardado, tokenAdmin }) {
+  const idBase = useId();
+  const nombreValido = formulario.nombre.trim() !== "";
+  const hayCambios =
+    formulario.nombre !== comercio.nombre || formulario.nicho !== comercio.nicho ||
+    formulario.representante !== comercio.representante || formulario.contacto !== comercio.contacto;
+  const activo = comercio.estatus === "ACTIVO";
+  const claseCampo = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-[#FE6712]";
+  const claseEtiqueta = "text-[10px] font-bold text-slate-500 block mb-1";
 
   return (
-    <div ref={contenedorRef} className="relative inline-block text-left">
-      <button
-        type="button"
-        onClick={() => setAbierto((a) => !a)}
-        aria-haspopup="menu"
-        aria-expanded={abierto}
-        aria-label="Acciones"
-        className="w-8 h-8 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 transition"
-      >
-        <MoreVertical className="w-4 h-4" />
-      </button>
-      {abierto && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-56 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden text-left">
+    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 text-left space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-black text-slate-900">Información básica</h2>
+          <p className="mt-1 text-[11px] text-slate-400">
+            Datos del comercio en el directorio. Los cambios se aplican solo en esta vista: todavía no se envían a Adonis.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border whitespace-nowrap ${
+            activo ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
+          }`}>
+            {activo ? "Activo" : "Suspendido"}
+          </span>
           <button
             type="button"
-            onClick={() => { setAbierto(false); onImpersonar(); }}
-            className="w-full flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-orange-50 hover:text-[#FE6712] transition text-left"
+            onClick={onCambiarEstatus}
+            className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-[11px] font-bold hover:bg-slate-100 transition flex items-center gap-1"
           >
-            <LogIn className="w-3.5 h-3.5 shrink-0" /> Entrar como comercio
-          </button>
-          <button
-            type="button"
-            onClick={() => { setAbierto(false); onCambiarEstatus(); }}
-            className="w-full flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition text-left"
-          >
-            <Power className="w-3.5 h-3.5 shrink-0" /> {estatus === "ACTIVO" ? "Suspender" : "Activar"}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setAbierto(false); onEditar(); }}
-            className="w-full flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition text-left border-t border-slate-100"
-          >
-            <Pencil className="w-3.5 h-3.5 shrink-0" /> Editar Información Básica
+            <Power className="w-3.5 h-3.5" /> {activo ? "Suspender" : "Activar"}
           </button>
         </div>
-      )}
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onGuardar();
+        }}
+        className="space-y-3"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label htmlFor={`${idBase}-nombre`} className={claseEtiqueta}>Nombre</label>
+            <input
+              id={`${idBase}-nombre`}
+              type="text"
+              value={formulario.nombre}
+              onChange={(e) => onCambiarFormulario({ nombre: e.target.value })}
+              aria-invalid={nombreValido ? undefined : true}
+              aria-describedby={nombreValido ? undefined : `${idBase}-nombre-error`}
+              className={`${claseCampo} ${nombreValido ? "" : "border-rose-300"}`}
+            />
+          </div>
+          <div>
+            <label htmlFor={`${idBase}-nicho`} className={claseEtiqueta}>Nicho</label>
+            <select
+              id={`${idBase}-nicho`}
+              value={formulario.nicho}
+              onChange={(e) => onCambiarFormulario({ nicho: e.target.value })}
+              className={claseCampo}
+            >
+              {!NICHOS_FILTRO.includes(formulario.nicho) && <option value={formulario.nicho}>{formulario.nicho}</option>}
+              {NICHOS_FILTRO.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`${idBase}-representante`} className={claseEtiqueta}>Representante</label>
+            <input
+              id={`${idBase}-representante`}
+              type="text"
+              value={formulario.representante}
+              onChange={(e) => onCambiarFormulario({ representante: e.target.value })}
+              className={claseCampo}
+            />
+          </div>
+          <div>
+            <label htmlFor={`${idBase}-contacto`} className={claseEtiqueta}>Contacto</label>
+            <input
+              id={`${idBase}-contacto`}
+              type="text"
+              value={formulario.contacto}
+              onChange={(e) => onCambiarFormulario({ contacto: e.target.value })}
+              className={claseCampo}
+            />
+          </div>
+        </div>
+        {!nombreValido && (
+          <p id={`${idBase}-nombre-error`} className="text-[11px] font-bold text-rose-600">El nombre no puede quedar vacío.</p>
+        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {avisoGuardado !== null && (
+            <span role="status" className="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-[11px] font-bold text-amber-800">
+              Guardado en esta vista (API pendiente)
+            </span>
+          )}
+          {hayCambios && (
+            <button
+              type="button"
+              onClick={onDescartar}
+              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-[11px] font-bold hover:bg-slate-100 transition flex items-center gap-1"
+            >
+              <X className="w-3.5 h-3.5" /> Descartar cambios
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={!hayCambios || !nombreValido}
+            className="px-3 py-1.5 bg-[#FE6712] hover:bg-[#ea580c] disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1"
+          >
+            <Check className="w-3.5 h-3.5" /> Guardar
+          </button>
+        </div>
+      </form>
+
+      {esGastronomia(comercio) && <ConfiguracionGastronomica token={tokenAdmin} storeId={comercio.id} />}
     </div>
   );
 }
@@ -310,8 +456,13 @@ export default function MasterTiendasPage() {
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstatus, setFiltroEstatus] = useState("TODOS");
   const [filtroNicho, setFiltroNicho] = useState("TODOS");
-  const [editandoId, setEditandoId] = useState(null);
+  // Entorno de un comercio: id del comercio en cuyo contexto se está (null = directorio), formulario de su información
+  // básica y marca de tiempo del último «guardado en esta vista» mientras su aviso siga visible
+  const [comercioActivoId, setComercioActivoId] = useState(null);
   const [formEdicion, setFormEdicion] = useState({ nombre: "", nicho: "General", representante: "", contacto: "" });
+  const [avisoGuardado, setAvisoGuardado] = useState(null);
+  const tituloEntornoRef = useRef(null);
+  const ultimoComercioRef = useRef(null);
   // Nueva Tienda: sección abierta o no, categorías del diccionario para elegir y tiendas «creadas» (simuladas) de esta sesión
   const [creando, setCreando] = useState(false);
   const [categoriasDisponibles, setCategoriasDisponibles] = useState([]);
@@ -340,6 +491,24 @@ export default function MasterTiendasPage() {
     return () => controller.abort();
   }, [isAdmin, tokenAdmin, recargaTiendas]);
 
+  // El aviso del guardado local desaparece solo; un nuevo guardado reinicia el conteo
+  useEffect(() => {
+    if (avisoGuardado === null) return undefined;
+    const temporizador = setTimeout(() => setAvisoGuardado(null), AVISO_GUARDADO_MS);
+    return () => clearTimeout(temporizador);
+  }, [avisoGuardado]);
+
+  // El comercio en cuyo entorno se está se deriva de la tabla (así refleja los cambios locales); si dejara de existir
+  // (p. ej. al recargar el directorio), la página vuelve sola al directorio
+  const comercioActivo = tiendas.find((t) => t.id === comercioActivoId) ?? null;
+  const enContexto = comercioActivo !== null;
+
+  // Foco: al entrar, en el título del entorno; al volver, en el nombre del comercio del que se salió
+  useEffect(() => {
+    if (enContexto) tituloEntornoRef.current?.focus({ preventScroll: true });
+    else if (ultimoComercioRef.current !== null) document.getElementById(`comercio-${ultimoComercioRef.current}`)?.focus();
+  }, [enContexto]);
+
   const handleReintentarTiendas = () => {
     setErrorTiendas("");
     setErrorCategorias("");
@@ -352,28 +521,47 @@ export default function MasterTiendasPage() {
     router.replace("/login");
   };
 
-  const handleImpersonar = (tienda) => {
-    // Siembra la MISMA sesión real que usa el Portal de Comercios (iac_store/ud_store, ver
-    // commerceServices.js) para entrar con la identidad de la tienda — funcional para navegar el
-    // portal, pero el token es de mentira: cualquier llamada real a Adonis desde ahí devolverá 401
-    // hasta que exista un endpoint real de impersonación administrativa.
+  // «Entrar» en un comercio (clic en su nombre). Siembra la MISMA sesión real que usa el Portal de Comercios
+  // (iac_store/ud_store, ver commerceServices.js) para que sus vistas abran con la identidad de la tienda — funcional
+  // para navegar el portal, pero el token es de mentira: cualquier llamada real a Adonis que valide sesión devolverá
+  // 401 hasta que exista un endpoint real de impersonación administrativa. El Kardex ya sabe esto: para leer la lista
+  // de tiendas y el Excel usa el token del administrador y reconoce este formato, así que no hay que cambiarlo sin
+  // cambiar también PREFIJO_TOKEN_IMPERSONADO en comercios/productos/page.jsx. A diferencia del antiguo «Entrar como
+  // comercio», no navega: cambia el contexto de esta página al entorno del comercio.
+  const handleEntrarComercio = (tienda) => {
     localStorage.setItem("iac_store", `impersonado-admin-${tienda.id}`);
     localStorage.setItem("ud_store", JSON.stringify({ id: tienda.id, entityId: tienda.id, name: tienda.nombre, nombre: tienda.nombre }));
-    router.push("/comercios/configuracion");
+    ultimoComercioRef.current = tienda.id;
+    setFormEdicion(formularioDe(tienda));
+    setAvisoGuardado(null);
+    setCreando(false);
+    setComercioActivoId(tienda.id);
+    window.scrollTo(0, 0);
+  };
+
+  const handleSalirComercio = () => {
+    setComercioActivoId(null);
+    window.scrollTo(0, 0);
   };
 
   const handleCambiarEstatus = (id) => {
     setTiendas((prev) => prev.map((t) => (t.id === id ? { ...t, estatus: t.estatus === "ACTIVO" ? "SUSPENDIDO" : "ACTIVO" } : t)));
   };
 
-  const handleAbrirEdicion = (tienda) => {
-    setEditandoId(tienda.id);
-    setFormEdicion({ nombre: tienda.nombre, nicho: tienda.nicho, representante: tienda.representante, contacto: tienda.contacto });
-  };
-
+  // El nombre es el único camino para entrar a un comercio: no se deja guardar vacío (la fila quedaría inalcanzable).
+  // Representante y contacto vacíos vuelven al valor por defecto de la tabla.
   const handleGuardarEdicion = (id) => {
-    setTiendas((prev) => prev.map((t) => (t.id === id ? { ...t, ...formEdicion } : t)));
-    setEditandoId(null);
+    const nombre = formEdicion.nombre.trim();
+    if (!nombre) return;
+    const guardado = {
+      nombre,
+      nicho: formEdicion.nicho,
+      representante: formEdicion.representante.trim() || NO_REGISTRADO,
+      contacto: formEdicion.contacto.trim() || NO_REGISTRADO,
+    };
+    setTiendas((prev) => prev.map((t) => (t.id === id ? { ...t, ...guardado } : t)));
+    setFormEdicion(guardado);
+    setAvisoGuardado(Date.now());
   };
 
   // Creación SIMULADA: la tienda se queda en el estado de esta página (la más reciente primero) con un id local
@@ -405,6 +593,49 @@ export default function MasterTiendasPage() {
           <Link href="/" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FE6712] hover:underline pt-1">
             <ArrowLeft className="w-3.5 h-3.5" /> Volver al inicio
           </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Dentro de un comercio: menú lateral y contenido propios en lugar del directorio. El estado del directorio (búsqueda,
+  // filtros, tiendas) vive en esta misma página, así que al volver se encuentra tal como se dejó.
+  if (comercioActivo) {
+    return (
+      <div className="flex min-h-screen bg-white">
+        <MenuLateralComercio comercio={comercioActivo} onVolver={handleSalirComercio} onCerrarSesion={handleCerrarSesionErp} />
+
+        <div className="flex-1 min-h-screen bg-white text-slate-800 flex flex-col font-sans">
+          <header className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-40">
+            <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 flex items-center gap-3">
+              <div className="min-w-0">
+                <h1 ref={tituloEntornoRef} tabIndex={-1} className="text-sm font-black text-slate-900 truncate focus:outline-none">
+                  {comercioActivo.nombre}
+                </h1>
+                <p className="text-[11px] text-slate-400 font-medium">Entorno del comercio · Tienda #{comercioActivo.id}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSalirComercio}
+                className="ml-auto shrink-0 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-100 transition flex items-center gap-1.5"
+              >
+                <ArrowLeft className="w-4 h-4" /> Volver al Master
+              </button>
+            </div>
+          </header>
+
+          <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 flex-1 w-full space-y-4">
+            <EntornoComercio
+              comercio={comercioActivo}
+              formulario={formEdicion}
+              onCambiarFormulario={(cambios) => setFormEdicion((previo) => ({ ...previo, ...cambios }))}
+              onGuardar={() => handleGuardarEdicion(comercioActivo.id)}
+              onDescartar={() => setFormEdicion(formularioDe(comercioActivo))}
+              onCambiarEstatus={() => handleCambiarEstatus(comercioActivo.id)}
+              avisoGuardado={avisoGuardado}
+              tokenAdmin={user?.token}
+            />
+          </main>
         </div>
       </div>
     );
@@ -535,13 +766,12 @@ export default function MasterTiendasPage() {
                   <th className="p-3">Representante</th>
                   <th className="p-3">Contacto</th>
                   <th className="p-3">Estatus</th>
-                  <th className="p-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {mostrandoCarga ? (
                   <tr>
-                    <td colSpan="7" className="p-10 text-center text-xs">
+                    <td colSpan="6" className="p-10 text-center text-xs">
                       <span role="status" className="inline-flex items-center gap-2 font-bold text-slate-500">
                         <Loader2 className="w-4 h-4 text-[#FE6712] animate-spin" /> Cargando tiendas...
                       </span>
@@ -549,103 +779,37 @@ export default function MasterTiendasPage() {
                   </tr>
                 ) : tiendasFiltradas.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="p-10 text-center text-xs text-slate-400">No se encontraron comercios que coincidan.</td>
+                    <td colSpan="6" className="p-10 text-center text-xs text-slate-400">No se encontraron comercios que coincidan.</td>
                   </tr>
                 ) : (
-                  tiendasFiltradas.map((t) => {
-                    const editando = editandoId === t.id;
-                    return (
-                      <React.Fragment key={t.id}>
-                        <tr className="hover:bg-slate-50 transition">
-                          <td className="p-3 font-mono text-slate-500">#{t.id}</td>
-                          <td className="p-3 font-bold text-slate-800">{t.nombre}</td>
-                          <td className="p-3 text-slate-600">{t.nicho}</td>
-                          <td className="p-3 text-slate-600">{t.representante}</td>
-                          <td className="p-3 text-slate-600 font-mono">{t.contacto}</td>
-                          <td className="p-3">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border whitespace-nowrap ${
-                              t.estatus === "ACTIVO"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : "bg-rose-50 text-rose-700 border-rose-200"
-                            }`}>
-                              {t.estatus === "ACTIVO" ? "Activo" : "Suspendido"}
-                            </span>
-                          </td>
-                          <td className="p-3 text-right">
-                            <MenuAcciones
-                              estatus={t.estatus}
-                              onImpersonar={() => handleImpersonar(t)}
-                              onCambiarEstatus={() => handleCambiarEstatus(t.id)}
-                              onEditar={() => handleAbrirEdicion(t)}
-                            />
-                          </td>
-                        </tr>
-                        {editando && (
-                          <tr className="bg-slate-50">
-                            <td colSpan="7" className="p-4">
-                              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-left">
-                                <div>
-                                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Nombre</label>
-                                  <input
-                                    type="text"
-                                    value={formEdicion.nombre}
-                                    onChange={(e) => setFormEdicion((p) => ({ ...p, nombre: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Nicho</label>
-                                  <select
-                                    value={formEdicion.nicho}
-                                    onChange={(e) => setFormEdicion((p) => ({ ...p, nicho: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
-                                  >
-                                    {!NICHOS_FILTRO.includes(formEdicion.nicho) && <option value={formEdicion.nicho}>{formEdicion.nicho}</option>}
-                                    {NICHOS_FILTRO.map((n) => <option key={n} value={n}>{n}</option>)}
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Representante</label>
-                                  <input
-                                    type="text"
-                                    value={formEdicion.representante}
-                                    onChange={(e) => setFormEdicion((p) => ({ ...p, representante: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Contacto</label>
-                                  <input
-                                    type="text"
-                                    value={formEdicion.contacto}
-                                    onChange={(e) => setFormEdicion((p) => ({ ...p, contacto: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
-                                  />
-                                </div>
-                              </div>
-                              <div className="flex items-center justify-end gap-2 mt-3">
-                                <button
-                                  type="button"
-                                  onClick={() => setEditandoId(null)}
-                                  className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-[11px] font-bold hover:bg-slate-100 transition flex items-center gap-1"
-                                >
-                                  <X className="w-3.5 h-3.5" /> Cancelar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleGuardarEdicion(t.id)}
-                                  className="px-3 py-1.5 bg-[#FE6712] hover:bg-[#ea580c] text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1"
-                                >
-                                  <Check className="w-3.5 h-3.5" /> Guardar
-                                </button>
-                              </div>
-                              {esGastronomia(t) && <ConfiguracionGastronomica token={user?.token} storeId={t.id} />}
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })
+                  tiendasFiltradas.map((t) => (
+                    <tr key={t.id} className="hover:bg-slate-50 transition">
+                      <td className="p-3 font-mono text-slate-500">#{t.id}</td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          id={`comercio-${t.id}`}
+                          onClick={() => handleEntrarComercio(t)}
+                          title={`Entrar al entorno de ${t.nombre}`}
+                          className="rounded text-left font-bold text-slate-800 underline decoration-slate-300 underline-offset-4 transition hover:text-[#FE6712] hover:decoration-[#FE6712] focus-visible:text-[#FE6712] focus-visible:decoration-[#FE6712] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FE6712]/40"
+                        >
+                          {t.nombre}
+                        </button>
+                      </td>
+                      <td className="p-3 text-slate-600">{t.nicho}</td>
+                      <td className="p-3 text-slate-600">{t.representante}</td>
+                      <td className="p-3 text-slate-600 font-mono">{t.contacto}</td>
+                      <td className="p-3">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border whitespace-nowrap ${
+                          t.estatus === "ACTIVO"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-rose-50 text-rose-700 border-rose-200"
+                        }`}>
+                          {t.estatus === "ACTIVO" ? "Activo" : "Suspendido"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
